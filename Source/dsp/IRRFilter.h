@@ -31,7 +31,7 @@ inline bool checkFloatUnderflow(float& value)
 }
 
 enum FilterAlgorithm {
-	kLPF1, kLPF2, kHPF1, kHPF2, kBPF2, kBSF2, kButterLPF2, kButterHPF2, kButterBPF2,
+	kLPF1P, kLPF1, kLPF2, kHPF1, kHPF2, kBPF2, kBSF2, kButterLPF2, kButterHPF2, kButterBPF2,
 	kButterBSF2, kMMALPF2, kMMALPF2B, kLowShelf, kHiShelf, kNCQParaEQ, kCQParaEQ,
 	kLWRLPF2, kLWRHPF2, kAPF1, kAPF2, kResonA, kResonB, kMatchLP2A, kMatchLP2B, kMatchBP2A,
 	kMatchBP2B, kImpInvLP1, kImpInvLP2
