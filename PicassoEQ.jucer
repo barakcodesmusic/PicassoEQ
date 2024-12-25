@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<JUCERPROJECT id="WHc1UQ" name="PicassoEQ" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" headerPath="Source/*">
+  <MAINGROUP id="DosSAi" name="PicassoEQ">
+    <GROUP id="{525E36B7-57C6-2C47-A140-753105CA07BB}" name="dsp">
+      <FILE id="kfZFKs" name="IRRFilter.cpp" compile="1" resource="0" file="Source/dsp/IRRFilter.cpp"/>
+      <FILE id="xfRPRr" name="IRRFilter.h" compile="0" resource="0" file="Source/dsp/IRRFilter.h"/>
+    </GROUP>
+    <GROUP id="{A8C44CF7-E15D-C1BB-468D-57F9581F5298}" name="Source">
+      <FILE id="qX9AAk" name="PluginProcessor.cpp" compile="1" resource="0"
+            file="Source/PluginProcessor.cpp"/>
+      <FILE id="FlNAzc" name="PluginProcessor.h" compile="0" resource="0"
+            file="Source/PluginProcessor.h"/>
+      <FILE id="htHZnY" name="PluginEditor.cpp" compile="1" resource="0"
+            file="Source/PluginEditor.cpp"/>
+      <FILE id="W5FHqx" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+    </GROUP>
+  </MAINGROUP>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0"
+            useGlobalPath="1"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_dsp" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"/>
+  <EXPORTFORMATS>
+    <VS2022 targetFolder="Builds/VisualStudio2022">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="1" name="Debug" targetName="PicassoEQ" enablePluginBinaryCopyStep="1"/>
+        <CONFIGURATION isDebug="0" name="Release" targetName="PicassoEQ"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="../../juce-8.0.4-windows/JUCE/modules"/>
+        <MODULEPATH id="juce_dsp" path="../../juce-8.0.4-windows/JUCE/modules"/>
+      </MODULEPATHS>
+    </VS2022>
+  </EXPORTFORMATS>
+</JUCERPROJECT>
