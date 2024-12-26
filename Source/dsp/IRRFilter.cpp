@@ -22,6 +22,24 @@ void BiQuad::reset()
 	m_state.fill(0.0f);
 }
 
+float BiQuad::processSample(float xn)
+{
+	jassert(m_coeffs.size() == 7);
+	const auto [a0, a1, a2, b1, b2, _w, _d] = m_coeffs;
+	auto& [ad1, ad2, bd1, bd2] = m_state;
+
+	float yn = a0 * xn + ad1 * a1 + ad2 * a2 - bd1 * b1 - bd2 * b2;
+
+	checkFloatUnderflow(yn);
+
+	ad2 = ad1;
+	ad1 = xn;
+	bd2 = bd1;
+	bd1 = yn;
+
+	return yn;
+}
+
 IRRFilter::IRRFilter()
 {
 }
@@ -34,6 +52,40 @@ float IRRFilter::processSample(float xn)
 {;
 	auto [wet, dry] = m_biquad.getDryWet();
 	return dry * xn + wet * m_biquad.processSample(xn);
+}
+
+size_t IRRFilter::getFilterOrder() {
+	// -1 because a0 term, -2 because dry and wet in coeffs
+	return (static_cast<size_t> (m_biquad.m_coeffs.size()) - 3) / 2;
+}
+
+float IRRFilter::getMagnitudeForFrequency(float freq)
+{
+	constexpr Complex<float> j(0, 1);
+	const auto order = getFilterOrder();
+	const auto coefs = m_biquad.m_coeffs.begin();
+
+	jassert(freq >= 0 && freq <= m_fp.sampleRate * 0.5);
+
+	Complex<double> numerator = 0.0, denominator = 0.0, factor = 1.0;
+	Complex<double> jw = std::exp(-juce::MathConstants<float>::twoPi * freq * j / m_fp.sampleRate);
+
+	for (size_t n = 0; n <= order; ++n)
+	{
+		numerator += static_cast<double> (coefs[n]) * factor;
+		factor *= jw;
+	}
+
+	denominator = 1.0;
+	factor = jw;
+
+	for (size_t n = order + 1; n <= 2 * order; ++n)
+	{
+		denominator += static_cast<double> (coefs[n]) * factor;
+		factor *= jw;
+	}
+
+	return std::abs(numerator / denominator);
 }
 
 void IRRFilter::reset(const FilterParams& fp)
@@ -642,24 +694,6 @@ bool IRRFilter::setCoeffs()
 	else {
 	}
 	return false;
-}
-
-float BiQuad::processSample(float xn)
-{
-	jassert(m_coeffs.size() == 7);
-	const auto [a0, a1, a2, b1, b2, _w, _d] = m_coeffs;
-	auto& [ad1, ad2, bd1, bd2] = m_state;
-
-	float yn = a0 * xn + ad1 * a1 + ad2 * a2 - bd1 * b1 - bd2 * b2;
-
-	checkFloatUnderflow(yn);
-
-	ad2 = ad1;
-	ad1 = xn;
-	bd2 = bd1;
-	bd1 = yn;
-
-	return yn;
 }
 
 }

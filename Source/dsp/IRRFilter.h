@@ -5,6 +5,7 @@
 #include <utility>
 #include <array>
 #include <limits>
+#include <complex>
 #include <unordered_map>
 
 /*
@@ -16,6 +17,9 @@
 */
 
 namespace dsp {
+
+template <typename Type>
+using Complex = std::complex<Type>;
 
 inline bool checkFloatUnderflow(float& value)
 {
@@ -75,6 +79,8 @@ public:
 	}
 	float processSample(float xn);
 
+	friend class IRRFilter;
+
 private:
 	std::array<float, 7> m_coeffs;
 	std::array<float, 4> m_state;
@@ -102,6 +108,8 @@ public:
 	IRRFilter();
 	~IRRFilter();
 	float processSample(float xn);
+	size_t getFilterOrder();
+	float getMagnitudeForFrequency(float freq);
 
 	void reset(const FilterParams& fp);
 

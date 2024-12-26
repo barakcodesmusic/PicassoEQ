@@ -264,7 +264,7 @@ dsp::FilterParams PicassoEQAudioProcessor::getUserFilterParams()
     fp.q = apvts.getRawParameterValue("Q")->load();
     fp.boostCutDB = apvts.getRawParameterValue("Peak Gain")->load();
     //fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue("Filter Algorithm")->load());
-    fp.fa = dsp::FilterAlgorithm::kMMALPF2;
+    fp.fa = dsp::FilterAlgorithm::kLPF2;
     fp.sampleRate = getSampleRate();
     fp.postGainDB = apvts.getRawParameterValue("Post Gain")->load();
 

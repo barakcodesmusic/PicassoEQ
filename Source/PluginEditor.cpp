@@ -174,6 +174,10 @@ void EQGraphicComponent::paint(juce::Graphics& g)
 
     drawTextLabels(g);
 
+    g.setColour(Colours::white);
+    g.strokePath(m_responseCurve, PathStrokeType(2.f));
+
+    updateResponseCurve();
 }
 
 void EQGraphicComponent::resized()
@@ -187,29 +191,34 @@ void EQGraphicComponent::resized()
     float posX = bounds.getX() + bounds.getWidth() * juce::mapFromLog10(lowCutNormalized,20.f/20000.f,1.f);
     float posY = bounds.getY() + bounds.getHeight() * (1-juce::mapFromLog10(qNormalized,0.1f/18.f, 1.f));
 
-    DBG("Low Cut Normalized: " << lowCutNormalized << ", Q: " << qNormalized);
+    //DBG("Low Cut Normalized: " << lowCutNormalized << ", Q: " << qNormalized);
 
     Rectangle<int> filter1Bound(static_cast<int>(posX), static_cast<int>(posY), 30, 30);
     m_filterCircles[0].setBounds(filter1Bound);
+
+    repaint();
 }
 
 void EQGraphicComponent::setNewFilterParams(float eq_x, float eq_y) {
     // TODO: Make this more generic? Assuming 2nd order low cut filter for now
 
-    float width = getAnalysisArea().getWidth();
-    float height = getAnalysisArea().getHeight();
-    float left = getAnalysisArea().getX();
+    auto bounds = getAnalysisArea();
+
+    float height = bounds.getHeight();
+    float width = bounds.getWidth();
+    float top = bounds.getY();
+    float bottom = bounds.getBottom();
     
     float cutoff = juce::mapToLog10(eq_x/width, 20.f/20000.f, 1.0f);
-    float unmapped_q = height - eq_y; // From bottom to top of screen
     float q = 0.0;
+    
+    //DBG(width << " " << top << " " << bottom << " " << centerY);
 
-    // Lower half is 0-1, Upper half is 1-18
-    if (unmapped_q < (height / 2)) {
-        q = juce::jmap(unmapped_q, 0.0f, height / 2, 0.1f, 1.0f/18.0f);
+    if (eq_y < height/2.f) { // In upper half
+        q = juce::jmap(height/2.f-eq_y, 0.f, height/2.f, 1.f / 18.f, 1.0f); // 1 -> 18
     }
     else {
-        q = juce::jmap(unmapped_q, height/2, height, 1.0f/18.0f, 1.0f);
+        q = juce::jmap(height-eq_y, 0.f, height/2.f, 1.f/180.f, 1.f / 18.f); // .1 -> 1
     }
 
     //DBG("Cutoff: " << cutoff << ", Q : " << q);
@@ -217,6 +226,41 @@ void EQGraphicComponent::setNewFilterParams(float eq_x, float eq_y) {
     m_audioProcessor.apvts.getParameter("LowCut Freq")->setValueNotifyingHost(cutoff);
     m_audioProcessor.apvts.getParameter("Q")->setValueNotifyingHost(q);
     //m_audioProcessor.apvts.getParameter("Filter Algorithm")->setValueNotifyingHost(dsp::FilterAlgorithm::kMMALPF2);
+}
+
+void EQGraphicComponent::updateResponseCurve()
+{
+    using namespace juce;
+    auto responseArea = getAnalysisArea();
+
+    auto w = responseArea.getWidth();
+
+    std::vector<double> mags;
+
+    mags.resize(w);
+
+    m_lowPassFilter.reset(m_audioProcessor.getUserFilterParams());
+
+    for (int i = 0; i < w; ++i) {
+        float mag = 1.f;
+        float xPos = float(i) / float(w);
+        auto freq = mapToLog10(xPos, 20.f, 20000.f);
+        mag *= m_lowPassFilter.getMagnitudeForFrequency(freq);
+        mags[i] = Decibels::gainToDecibels(mag);
+    }
+
+    const float outputMinY = responseArea.getBottom();
+    const float outputMaxY = responseArea.getY();
+    auto map = [outputMinY, outputMaxY](float input) {
+        return jmap(input, -24.f, 24.f, outputMinY, outputMaxY);
+    };
+
+    m_responseCurve.clear();
+    m_responseCurve.startNewSubPath(responseArea.getX(), map(mags[0]));
+
+    for (int i = 1; i < w; ++i) {
+        m_responseCurve.lineTo(responseArea.getX() + i, map(mags[i]));
+    }
 }
 
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
@@ -229,6 +273,7 @@ void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
         m_filterCircles[0].setBounds(newX, newY, w, h);
 
         setNewFilterParams(newX, newY);
+        repaint();
     }
 }
 

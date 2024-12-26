@@ -25,6 +25,7 @@ class EQGraphicComponent : public juce::Component {
 public:
     EQGraphicComponent(PicassoEQAudioProcessor& ap);
     ~EQGraphicComponent();
+    std::vector<juce::Component*> getComps();
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDrag(const juce::MouseEvent& event) override;
@@ -40,10 +41,14 @@ public:
     std::vector<float> getGains();
 
     void setNewFilterParams(float eq_x, float eq_y);
+    void updateResponseCurve();
 
 private:
+    juce::Path m_responseCurve;
     std::vector<FilterCircle> m_filterCircles;
     PicassoEQAudioProcessor& m_audioProcessor;
+
+    dsp::IRRFilter m_lowPassFilter;
 
 };
 
