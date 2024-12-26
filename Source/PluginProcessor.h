@@ -11,10 +11,28 @@
 #include <JuceHeader.h>
 
 #include "dsp/IRRFilter.h"
+#include <unordered_map>
 
-//==============================================================================
-/**
-*/
+
+constexpr int NUM_FILTERS = 4;
+
+template <int NumFilters, typename FilterType>
+class FilterChain {
+public:
+    void reset(dsp::FilterParams& fp, int i, float sampleRate) {
+        filters[i].reset(fp, sampleRate);
+    }
+    float processSample(float xn) {
+        float mag = 1.f;
+        for (auto& filter : filters) {
+            mag *= filter.processSample(xn);
+        }
+        return mag;
+    };
+
+    std::array<FilterType, NumFilters> filters;
+};
+
 class PicassoEQAudioProcessor  : public juce::AudioProcessor
 {
 public:
@@ -58,12 +76,12 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts{ *this, nullptr, "Parameters", createParameterLayout() };
 
-    dsp::FilterParams getUserFilterParams();
+    dsp::FilterParams getUserFilterParams(int filterIndex);
     void updateFilters();
 
 private:
-    dsp::IRRFilter m_filterL;
-    dsp::IRRFilter m_filterR;
+    FilterChain<NUM_FILTERS, dsp::IRRFilter> leftChain;
+    FilterChain<NUM_FILTERS, dsp::IRRFilter> rightChain;
     juce::dsp::Oscillator<float> osc;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PicassoEQAudioProcessor)

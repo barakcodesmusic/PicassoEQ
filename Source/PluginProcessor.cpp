@@ -187,8 +187,8 @@ void PicassoEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
     // ..do something to the data...
     for (int i = 0; i < buffer.getNumSamples(); ++i) {
         // 2 channels
-        *buffer.getWritePointer(0, i) = m_filterL.processSample(*buffer.getReadPointer(0, i));
-        *buffer.getWritePointer(1, i) = m_filterR.processSample(*buffer.getReadPointer(1, i));
+        *buffer.getWritePointer(0, i) = leftChain.processSample(*buffer.getReadPointer(0, i));
+        *buffer.getWritePointer(1, i) = rightChain.processSample(*buffer.getReadPointer(1, i));
     }
 
 }
@@ -233,50 +233,48 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    layout.add(std::make_unique<juce::AudioParameterFloat>("LowCut Freq",
-        "LowCut Freq",
-        juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
-        20.f));
-    layout.add(std::make_unique<juce::AudioParameterFloat>("Q",
-        "Q",
-        juce::NormalisableRange<float>(0.1f, 18.f, 0.1f, 1.0f),
-        1.0f));
-    layout.add(std::make_unique<juce::AudioParameterFloat>("Peak Gain",
-        "Peak Gain",
-        juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
-        0.0f));
-    layout.add(std::make_unique<juce::AudioParameterFloat>("Post Gain",
-        "Post Gain",
-        juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
-        0.0f));
-
-    juce::StringArray filterAlgoStrs = dsp::getFilterAlgoStrs();
-
-    layout.add(std::make_unique<juce::AudioParameterChoice>("Filter Algorithm", "Filter Algorithn", filterAlgoStrs, 0));
+    for (int i = 0; i < NUM_FILTERS; ++i) {
+        std::string filterName{ "Filter" + std::to_string(i) };
+        layout.add(std::make_unique<juce::AudioParameterFloat>(filterName+"LowCut Freq",
+            "LowCut Freq",
+            juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
+            20.f));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(filterName+"Q",
+            "Q",
+            juce::NormalisableRange<float>(0.1f, 18.f, 0.1f, 1.0f),
+            1.0f));
+        layout.add(std::make_unique<juce::AudioParameterFloat>(filterName + "BoostCutDB",
+            "BoostCutDB",
+            juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
+            0.0f));
+        juce::StringArray filterAlgoStrs = dsp::getFilterAlgoStrs();
+        layout.add(std::make_unique<juce::AudioParameterChoice>(filterName+"Filter Algorithm", "Filter Algorithn", filterAlgoStrs, 0));
+    }
 
     return layout;
 }
 
-dsp::FilterParams PicassoEQAudioProcessor::getUserFilterParams()
+dsp::FilterParams PicassoEQAudioProcessor::getUserFilterParams(int filterIndex)
 {
+    // TODO: Cleaner way to store these names
+    std::string filterName{ "Filter" + std::to_string(filterIndex) };
     dsp::FilterParams fp;
-    fp.cutoffFreq = apvts.getRawParameterValue("LowCut Freq")->load();
-    fp.q = apvts.getRawParameterValue("Q")->load();
-    fp.boostCutDB = apvts.getRawParameterValue("Peak Gain")->load();
-    //fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue("Filter Algorithm")->load());
-    fp.fa = dsp::FilterAlgorithm::kLPF2;
-    fp.sampleRate = getSampleRate();
-    fp.postGainDB = apvts.getRawParameterValue("Post Gain")->load();
+    fp.cutoffFreq = apvts.getRawParameterValue(filterName+"LowCut Freq")->load();
+    fp.q = apvts.getRawParameterValue(filterName + "Q")->load();
+    fp.boostCutDB = apvts.getRawParameterValue(filterName + "BoostCutDB")->load();
+    fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue(filterName + "Filter Algorithm")->load());
 
     return fp;
 }
 
 void PicassoEQAudioProcessor::updateFilters()
 {
-    auto filterParams = getUserFilterParams();
+    for (int i = 0; i < leftChain.filters.size(); ++i) {
+        auto filterParams = getUserFilterParams(i);
 
-    m_filterL.reset(filterParams);
-    m_filterR.reset(filterParams);
+        leftChain.reset(filterParams, i, getSampleRate());
+        rightChain.reset(filterParams, i, getSampleRate());
+    }
 }
 
 //==============================================================================

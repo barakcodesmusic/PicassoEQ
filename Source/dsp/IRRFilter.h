@@ -90,12 +90,10 @@ struct FilterParams {
 	float cutoffFreq;
 	float q;
 	float boostCutDB;
-	float postGainDB;
-	float sampleRate;
 	FilterAlgorithm fa;
 
 	bool operator==(const FilterParams& r) const {
-		return std::tie(cutoffFreq, q, boostCutDB, postGainDB, sampleRate, fa) == std::tie(r.cutoffFreq, r.q, r.boostCutDB, r.postGainDB, r.sampleRate, r.fa);
+		return std::tie(cutoffFreq, q, boostCutDB, fa) == std::tie(r.cutoffFreq, r.q, r.boostCutDB, r.fa);
 	}
 	bool operator!=(const FilterParams& r) const {
 		return !(*this == r);
@@ -108,13 +106,12 @@ public:
 	IRRFilter();
 	~IRRFilter();
 	float processSample(float xn);
-	size_t getFilterOrder();
-	float getMagnitudeForFrequency(float freq);
-
-	void reset(const FilterParams& fp);
+	float getMagnitudeForFrequency(float freq, float sampleRate);
+	void reset(const FilterParams& fp, float sampleRate);
 
 private:
-	bool setCoeffs(); // Using filter params
+	bool setCoeffs(float sampleRate); // Using filter params
+	size_t getFilterOrder(float sampleRate);
 
 	BiQuad m_biquad;
 	FilterParams m_fp;
