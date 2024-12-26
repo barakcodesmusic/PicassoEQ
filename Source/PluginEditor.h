@@ -13,21 +13,33 @@
 
 #include <vector>
 
-struct EQGraphicComponent : juce::Component {
+struct FilterCircle : juce::Component {
+    FilterCircle();
+    ~FilterCircle();
+    void paint(juce::Graphics& g) override;
+};
+
+class EQGraphicComponent : public juce::Component {
+public:
     EQGraphicComponent();
     ~EQGraphicComponent();
-    void drawTextLabels(juce::Graphics& g);
     void paint(juce::Graphics& g) override;
+    void resized() override;
+    void mouseDrag(const juce::MouseEvent& event) override;
+
+    void drawTextLabels(juce::Graphics& g);
+    void drawBackgroundGrid(juce::Graphics& g);
 
     std::vector<float> getXs(const std::vector<float>& freqs, float left, float width);
-
     juce::Rectangle<int> getRenderArea();
-
     juce::Rectangle<int> getAnalysisArea();
 
     std::vector<float> getFrequencies();
     std::vector<float> getGains();
-    void drawBackgroundGrid(juce::Graphics& g);
+
+private:
+    std::vector<FilterCircle> m_filterCircles;
+
 };
 
 //==============================================================================

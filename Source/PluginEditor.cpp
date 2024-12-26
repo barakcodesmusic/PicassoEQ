@@ -78,9 +78,12 @@ std::vector<juce::Component*> PicassoEQAudioProcessorEditor::getComps()
     };
 }
 
-EQGraphicComponent::EQGraphicComponent()
+EQGraphicComponent::EQGraphicComponent() :
+    m_filterCircles(1) // TODO: Make 4
 {
-
+    for (auto& circle : m_filterCircles) {
+        addAndMakeVisible(circle);
+    }
 }
 
 EQGraphicComponent::~EQGraphicComponent()
@@ -171,6 +174,27 @@ void EQGraphicComponent::paint(juce::Graphics& g)
 
 }
 
+void EQGraphicComponent::resized()
+{
+    using namespace juce;
+
+    auto bounds = getAnalysisArea();
+    auto centreX = bounds.getCentreX();
+    auto centreY = bounds.getCentreY();
+
+    Rectangle<int> filter1Bound(static_cast<int>(centreX / 2), static_cast<int>(centreY / 2), 30, 30);
+    m_filterCircles[0].setBounds(filter1Bound);
+}
+
+void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
+{
+    if (m_filterCircles[0].getBounds().contains(event.x, event.y)) {
+        float w = m_filterCircles[0].getWidth();
+        float h = m_filterCircles[0].getHeight();
+        m_filterCircles[0].setBounds(event.x - (w/2), event.y - (h/2), w, h);
+    }
+}
+
 std::vector<float> EQGraphicComponent::getXs(const std::vector<float>& freqs, float left, float width)
 {
     std::vector<float> xs;
@@ -252,4 +276,23 @@ void EQGraphicComponent::drawBackgroundGrid(juce::Graphics& g)
         g.setColour(gDb == 0.f ? Colour(0u, 172u, 1u) : Colours::darkgrey);
         g.drawHorizontalLine(y, left, right);
     }
+}
+
+FilterCircle::FilterCircle()
+{
+    setInterceptsMouseClicks(false, false);
+}
+
+FilterCircle::~FilterCircle()
+{
+}
+
+void FilterCircle::paint(juce::Graphics& g)
+{
+    using namespace juce;
+    g.setColour(Colours::orange);
+
+    auto bounds = getLocalBounds();
+    Rectangle<float> floatBounds(bounds.getX(), bounds.getY(), bounds.getWidth()-1, bounds.getHeight()-1);
+    g.drawEllipse(floatBounds, 1.0);
 }
