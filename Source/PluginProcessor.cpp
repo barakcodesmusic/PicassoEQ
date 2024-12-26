@@ -235,7 +235,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
 
     layout.add(std::make_unique<juce::AudioParameterFloat>("LowCut Freq",
         "LowCut Freq",
-        juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 0.25f),
+        juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
         20.f));
     layout.add(std::make_unique<juce::AudioParameterFloat>("Q",
         "Q",
@@ -263,7 +263,8 @@ dsp::FilterParams PicassoEQAudioProcessor::getUserFilterParams()
     fp.cutoffFreq = apvts.getRawParameterValue("LowCut Freq")->load();
     fp.q = apvts.getRawParameterValue("Q")->load();
     fp.boostCutDB = apvts.getRawParameterValue("Peak Gain")->load();
-    fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue("Filter Algorithm")->load());
+    //fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue("Filter Algorithm")->load());
+    fp.fa = dsp::FilterAlgorithm::kMMALPF2;
     fp.sampleRate = getSampleRate();
     fp.postGainDB = apvts.getRawParameterValue("Post Gain")->load();
 

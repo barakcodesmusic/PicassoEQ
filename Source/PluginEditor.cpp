@@ -181,10 +181,15 @@ void EQGraphicComponent::resized()
     using namespace juce;
 
     auto bounds = getAnalysisArea();
-    auto centreX = bounds.getCentreX();
-    auto centreY = bounds.getCentreY();
 
-    Rectangle<int> filter1Bound(static_cast<int>(centreX / 2), static_cast<int>(centreY / 2), 30, 30);
+    float lowCutNormalized = m_audioProcessor.apvts.getParameter("LowCut Freq")->getValue();
+    float qNormalized = m_audioProcessor.apvts.getParameter("Q")->getValue();
+    float posX = bounds.getX() + bounds.getWidth() * juce::mapFromLog10(lowCutNormalized,20.f/20000.f,1.f);
+    float posY = bounds.getY() + bounds.getHeight() * (1-juce::mapFromLog10(qNormalized,0.1f/18.f, 1.f));
+
+    DBG("Low Cut Normalized: " << lowCutNormalized << ", Q: " << qNormalized);
+
+    Rectangle<int> filter1Bound(static_cast<int>(posX), static_cast<int>(posY), 30, 30);
     m_filterCircles[0].setBounds(filter1Bound);
 }
 
@@ -195,22 +200,23 @@ void EQGraphicComponent::setNewFilterParams(float eq_x, float eq_y) {
     float height = getAnalysisArea().getHeight();
     float left = getAnalysisArea().getX();
     
-    float cutoff = juce::mapToLog10(eq_x/width, 20.f, 20000.f);
-    
+    float cutoff = juce::mapToLog10(eq_x/width, 20.f/20000.f, 1.0f);
     float unmapped_q = height - eq_y; // From bottom to top of screen
     float q = 0.0;
+
+    // Lower half is 0-1, Upper half is 1-18
     if (unmapped_q < (height / 2)) {
-        q = juce::jmap(unmapped_q, 0.0f, height / 2, 0.0f, 1.0f);
+        q = juce::jmap(unmapped_q, 0.0f, height / 2, 0.1f, 1.0f/18.0f);
     }
     else {
-        q = juce::jmap(unmapped_q, height/2, height, 1.0f, 18.0f);
+        q = juce::jmap(unmapped_q, height/2, height, 1.0f/18.0f, 1.0f);
     }
 
-    DBG("Cutoff: " << cutoff << ", Q : " << q);
+    //DBG("Cutoff: " << cutoff << ", Q : " << q);
 
     m_audioProcessor.apvts.getParameter("LowCut Freq")->setValueNotifyingHost(cutoff);
     m_audioProcessor.apvts.getParameter("Q")->setValueNotifyingHost(q);
-    m_audioProcessor.apvts.getParameter("Filter Algorithm")->setValueNotifyingHost(dsp::FilterAlgorithm::kButterLPF2);
+    //m_audioProcessor.apvts.getParameter("Filter Algorithm")->setValueNotifyingHost(dsp::FilterAlgorithm::kMMALPF2);
 }
 
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)

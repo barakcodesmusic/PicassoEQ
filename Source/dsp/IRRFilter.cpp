@@ -38,7 +38,9 @@ float IRRFilter::processSample(float xn)
 
 void IRRFilter::reset(const FilterParams& fp)
 {
-	m_biquad.reset();
+	if (m_fp.fa != fp.fa) {
+		m_biquad.reset();
+	}
 	m_fp = fp;
 	setCoeffs();
 }
