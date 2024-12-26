@@ -13,6 +13,8 @@
 
 #include <vector>
 
+using APVTS = juce::AudioProcessorValueTreeState;
+
 struct FilterCircle : juce::Component {
     FilterCircle();
     ~FilterCircle();
@@ -21,7 +23,7 @@ struct FilterCircle : juce::Component {
 
 class EQGraphicComponent : public juce::Component {
 public:
-    EQGraphicComponent();
+    EQGraphicComponent(PicassoEQAudioProcessor& ap);
     ~EQGraphicComponent();
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -37,8 +39,11 @@ public:
     std::vector<float> getFrequencies();
     std::vector<float> getGains();
 
+    void setNewFilterParams(float eq_x, float eq_y);
+
 private:
     std::vector<FilterCircle> m_filterCircles;
+    PicassoEQAudioProcessor& m_audioProcessor;
 
 };
 

@@ -11,7 +11,8 @@
 
 //==============================================================================
 PicassoEQAudioProcessorEditor::PicassoEQAudioProcessorEditor (PicassoEQAudioProcessor& p)
-    : AudioProcessorEditor (&p), audioProcessor (p), eqGraphicComponent()
+    : AudioProcessorEditor (&p), audioProcessor (p), 
+    eqGraphicComponent(audioProcessor)
 {
     // Make sure that before the constructor has finished, you've set the
     // editor's size to whatever you need it to be.
@@ -78,8 +79,9 @@ std::vector<juce::Component*> PicassoEQAudioProcessorEditor::getComps()
     };
 }
 
-EQGraphicComponent::EQGraphicComponent() :
-    m_filterCircles(1) // TODO: Make 4
+EQGraphicComponent::EQGraphicComponent(PicassoEQAudioProcessor& ap) :
+    m_filterCircles(1), // TODO: Make 4
+    m_audioProcessor(ap)
 {
     for (auto& circle : m_filterCircles) {
         addAndMakeVisible(circle);
@@ -186,12 +188,41 @@ void EQGraphicComponent::resized()
     m_filterCircles[0].setBounds(filter1Bound);
 }
 
+void EQGraphicComponent::setNewFilterParams(float eq_x, float eq_y) {
+    // TODO: Make this more generic? Assuming 2nd order low cut filter for now
+
+    float width = getAnalysisArea().getWidth();
+    float height = getAnalysisArea().getHeight();
+    float left = getAnalysisArea().getX();
+    
+    float cutoff = juce::mapToLog10(eq_x/width, 20.f, 20000.f);
+    
+    float unmapped_q = height - eq_y; // From bottom to top of screen
+    float q = 0.0;
+    if (unmapped_q < (height / 2)) {
+        q = juce::jmap(unmapped_q, 0.0f, height / 2, 0.0f, 1.0f);
+    }
+    else {
+        q = juce::jmap(unmapped_q, height/2, height, 1.0f, 18.0f);
+    }
+
+    DBG("Cutoff: " << cutoff << ", Q : " << q);
+
+    m_audioProcessor.apvts.getParameter("LowCut Freq")->setValueNotifyingHost(cutoff);
+    m_audioProcessor.apvts.getParameter("Q")->setValueNotifyingHost(q);
+    m_audioProcessor.apvts.getParameter("Filter Algorithm")->setValueNotifyingHost(dsp::FilterAlgorithm::kButterLPF2);
+}
+
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
 {
     if (m_filterCircles[0].getBounds().contains(event.x, event.y)) {
         float w = m_filterCircles[0].getWidth();
         float h = m_filterCircles[0].getHeight();
-        m_filterCircles[0].setBounds(event.x - (w/2), event.y - (h/2), w, h);
+        float newX = event.x - (w / 2);
+        float newY = event.y - (h / 2);
+        m_filterCircles[0].setBounds(newX, newY, w, h);
+
+        setNewFilterParams(newX, newY);
     }
 }
 
