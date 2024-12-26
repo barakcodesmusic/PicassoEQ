@@ -245,6 +245,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
         "Peak Gain",
         juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
         0.0f));
+    layout.add(std::make_unique<juce::AudioParameterFloat>("Post Gain",
+        "Post Gain",
+        juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
+        0.0f));
 
     juce::StringArray filterAlgoStrs = dsp::getFilterAlgoStrs();
 
@@ -260,6 +264,8 @@ dsp::FilterParams PicassoEQAudioProcessor::getUserFilterParams()
     fp.q = apvts.getRawParameterValue("Q")->load();
     fp.boostCutDB = apvts.getRawParameterValue("Peak Gain")->load();
     fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue("Filter Algorithm")->load());
+    fp.sampleRate = getSampleRate();
+    fp.postGainDB = apvts.getRawParameterValue("Post Gain")->load();
 
     return fp;
 }
@@ -268,8 +274,8 @@ void PicassoEQAudioProcessor::updateFilters()
 {
     auto filterParams = getUserFilterParams();
 
-    m_filterL.reset(static_cast<float>(getSampleRate()), filterParams);
-    m_filterR.reset(static_cast<float>(getSampleRate()), filterParams);
+    m_filterL.reset(filterParams);
+    m_filterR.reset(filterParams);
 }
 
 //==============================================================================
