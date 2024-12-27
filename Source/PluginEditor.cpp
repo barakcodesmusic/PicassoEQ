@@ -52,8 +52,6 @@ void PicassoEQAudioProcessorEditor::paint (juce::Graphics& g)
 
     g.setColour(Colour(255u, 154u, 1u));
     g.drawFittedText(title, bounds, juce::Justification::centredTop, 1);
-
-    
 }
 
 void PicassoEQAudioProcessorEditor::resized()
@@ -80,12 +78,38 @@ std::vector<juce::Component*> PicassoEQAudioProcessorEditor::getComps()
 }
 
 EQGraphicComponent::EQGraphicComponent(PicassoEQAudioProcessor& ap) :
-    m_filterCircles(1), // TODO: Make 4
     m_audioProcessor(ap)
 {
-    for (auto& circle : m_filterCircles) {
-        addAndMakeVisible(circle);
+    jassert(m_filterInterface.size >= 2);
+
+    dsp::FilterParams fp;
+    fp.boostCutDB = 0.f;
+    
+    std::array<float, NUM_FILTERS> startFreqs{40, 300, 2000, 12000};
+    for (int i = 0; i < m_filterInterface.size; ++i) {
+        std::string filterID{ "Filter" + std::to_string(i) };
+        //if (i == 0) {
+        //    float normalized = dsp::FilterAlgorithm::kHPF2 / 26.f;
+        //    m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(dsp::FilterAlgorithm::kLPF2);
+        //}
+        //else if (i == m_filterInterface.size - 1) {
+        //    float normalized = dsp::FilterAlgorithm::kLPF2 / 26.f;
+        //    m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(dsp::FilterAlgorithm::kLPF2);
+        //}
+        //else {
+        float normalized = dsp::FilterAlgorithm::kLPF2 / 26.f;
+        m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(normalized);
+        //}
+        
+        m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(startFreqs[i] / 20000.f);
+        m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(0.6f);   
+        m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(0.5f);
     }
+
+    for (auto& comp : m_filterInterface.fcomps) {
+        addAndMakeVisible(comp);
+    }
+    repaint();
 }
 
 EQGraphicComponent::~EQGraphicComponent()
@@ -180,27 +204,44 @@ void EQGraphicComponent::paint(juce::Graphics& g)
     updateResponseCurve();
 }
 
+// Getting positions from AudioProcessor filter
 void EQGraphicComponent::resized()
 {
     using namespace juce;
 
     auto bounds = getAnalysisArea();
 
-    float lowCutNormalized = m_audioProcessor.apvts.getParameter("LowCut Freq")->getValue();
-    float qNormalized = m_audioProcessor.apvts.getParameter("Q")->getValue();
-    float posX = bounds.getX() + bounds.getWidth() * juce::mapFromLog10(lowCutNormalized,20.f/20000.f,1.f);
-    float posY = bounds.getY() + bounds.getHeight() * (1-juce::mapFromLog10(qNormalized,0.1f/18.f, 1.f));
+    auto mapFPsToPositions = [&bounds](const auto& fp){
 
-    //DBG("Low Cut Normalized: " << lowCutNormalized << ", Q: " << qNormalized);
+        //DBG(width << " " << top << " " << bottom << " " << centerY);
 
-    Rectangle<int> filter1Bound(static_cast<int>(posX), static_cast<int>(posY), 30, 30);
-    m_filterCircles[0].setBounds(filter1Bound);
+        float midPointY = bounds.getHeight() / 2.f;
+        
+        float posX = bounds.getX() + bounds.getWidth() * juce::mapFromLog10(fp.cutoffFreq, 20.f, 20000.f);
+        float posY = 0.0;
+        if (fp.q > 1) { // TODO: Not accurate //fp.boostCutDB = ???
+            posY = midPointY - juce::jmap(fp.q, 1.f, 18.f, 0.f, midPointY); // 1 -> 18
+        }
+        else {
+            posY = bounds.getHeight() - juce::jmap(fp.q, 0.1f, 1.f, 0.f, midPointY); // .1 -> 1
+        }
+        
+        //DBG("Posx: " << posX << " Posy: " << posY << " width: " << bounds.getWidth() << " height: " << bounds.getHeight());
+        
+        return Rectangle<int>{static_cast<int>(posX), static_cast<int>(posY), 25, 25};
+    };
 
+    for (int i = 0; i < m_filterInterface.size; ++i) {
+        auto& fp = m_audioProcessor.getUserFilterParams(i);
+        /*DBG("index: " << i << " cutoff: " << fp.cutoffFreq << " q: " << fp.q << " fa: " << fp.fa);*/
+        Rectangle<int> filterBound = mapFPsToPositions(fp);
+        m_filterInterface.fcomps[i].setBounds(filterBound);
+    }
     repaint();
 }
 
-void EQGraphicComponent::setNewFilterParams(float eq_x, float eq_y) {
-    // TODO: Make this more generic? Assuming 2nd order low cut filter for now
+void EQGraphicComponent::updateFilterParamsFromCoords(std::string filterID, float eq_x, float eq_y) {
+    // TODO: Make this more generic. For peak filters need to pass down gain
 
     auto bounds = getAnalysisArea();
 
@@ -208,9 +249,10 @@ void EQGraphicComponent::setNewFilterParams(float eq_x, float eq_y) {
     float width = bounds.getWidth();
     float top = bounds.getY();
     float bottom = bounds.getBottom();
-    
-    float cutoff = juce::mapToLog10(eq_x/width, 20.f/20000.f, 1.0f);
+
+    float cutoffFreq = juce::mapToLog10(eq_x/width, 20.f/20000.f, 1.0f);
     float q = 0.0;
+    float boostCutDB = 0.5;
     
     //DBG(width << " " << top << " " << bottom << " " << centerY);
 
@@ -221,11 +263,12 @@ void EQGraphicComponent::setNewFilterParams(float eq_x, float eq_y) {
         q = juce::jmap(height-eq_y, 0.f, height/2.f, 1.f/180.f, 1.f / 18.f); // .1 -> 1
     }
 
-    //DBG("Cutoff: " << cutoff << ", Q : " << q);
+    // Update Audio Processor // TODO: Maybe FilterInterface has a reference to AudioProcessor?
+    m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(cutoffFreq);
+    m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(q);
+    m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(boostCutDB);
 
-    m_audioProcessor.apvts.getParameter("LowCut Freq")->setValueNotifyingHost(cutoff);
-    m_audioProcessor.apvts.getParameter("Q")->setValueNotifyingHost(q);
-    //m_audioProcessor.apvts.getParameter("Filter Algorithm")->setValueNotifyingHost(dsp::FilterAlgorithm::kMMALPF2);
+    //DBG("Cutoff: " << cutoff << ", Q : " << q);
 }
 
 void EQGraphicComponent::updateResponseCurve()
@@ -239,13 +282,18 @@ void EQGraphicComponent::updateResponseCurve()
 
     mags.resize(w);
 
-    m_lowPassFilter.reset(m_audioProcessor.getUserFilterParams());
-
+    // Set UI side filter from audioProcessor.filterParams
+    for (size_t i = 0; i < m_filterInterface.size; ++i) {
+        auto& fp = m_audioProcessor.getUserFilterParams(i);
+        m_filterInterface.setCoeffs(fp, i, m_audioProcessor.getSampleRate());
+    }
+    
+    
     for (int i = 0; i < w; ++i) {
-        float mag = 1.f;
         float xPos = float(i) / float(w);
         auto freq = mapToLog10(xPos, 20.f, 20000.f);
-        mag *= m_lowPassFilter.getMagnitudeForFrequency(freq);
+        float mag = m_filterInterface.fchain.getMagnitudeForFrequency(freq, m_audioProcessor.getSampleRate());
+        //DBG("Mag at freq: " << std::to_string(freq) << ": " << std::to_string(mag));
         mags[i] = Decibels::gainToDecibels(mag);
     }
 
@@ -263,16 +311,23 @@ void EQGraphicComponent::updateResponseCurve()
     }
 }
 
+// Settings positions into AudioProcessor filter
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
 {
-    if (m_filterCircles[0].getBounds().contains(event.x, event.y)) {
-        float w = m_filterCircles[0].getWidth();
-        float h = m_filterCircles[0].getHeight();
+    int filterIndex = m_filterInterface.inBoundsOfCircle(event.x, event.y);
+    if (filterIndex != -1) {
+        auto& comp = m_filterInterface.fcomps[filterIndex];
+        float w = comp.getWidth();
+        float h = comp.getHeight();
         float newX = event.x - (w / 2);
         float newY = event.y - (h / 2);
-        m_filterCircles[0].setBounds(newX, newY, w, h);
+        comp.setBounds(newX, newY, w, h);
 
-        setNewFilterParams(newX, newY);
+        auto& fp = m_audioProcessor.getUserFilterParams(filterIndex);
+
+        std::string filterID{ "Filter" + std::to_string(filterIndex) };
+        updateFilterParamsFromCoords(filterID, newX, newY);
+
         repaint();
     }
 }

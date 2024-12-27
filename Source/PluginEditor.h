@@ -12,10 +12,40 @@
 #include "PluginProcessor.h"
 
 #include <vector>
+#include <array>
+#include <map>
 
-using APVTS = juce::AudioProcessorValueTreeState;
+template <int NumFilters, typename Component, typename FilterType>
+struct FilterInterface {
+    // Returns >0 if x/y inside bounds of one of the circles
+    // this FilterInfo object owns
+    int inBoundsOfCircle(int x, int y) {
+        for (int i = 0; i < NumFilters; ++i) {
+            if (fcomps[i].getBounds().contains(x, y)) {
+                return i;
+            }
+        }
+        return -1;
+    };
+    void setCoeffs(dsp::FilterParams& fp, int i, float sampleRate) {
+        fchain.setCoeffs(fp, i, sampleRate);
+    }
+    int getFilterIndex(Component& comp) {
+        for (int i = 0; i < NumFilters; ++i) {
+            if (fcomps[i] == comp) {
+                return i;
+            }
+        }
+        jassert(false); // Should never reach here, means we didn't find passed down filter
+    }
 
-struct FilterCircle : juce::Component {
+    int size = NumFilters;
+    FilterChain<NumFilters, FilterType> fchain;
+    std::array<Component, NumFilters> fcomps;
+};
+
+class FilterCircle : public juce::Component {
+public:
     FilterCircle();
     ~FilterCircle();
     void paint(juce::Graphics& g) override;
@@ -25,7 +55,6 @@ class EQGraphicComponent : public juce::Component {
 public:
     EQGraphicComponent(PicassoEQAudioProcessor& ap);
     ~EQGraphicComponent();
-    std::vector<juce::Component*> getComps();
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDrag(const juce::MouseEvent& event) override;
@@ -40,16 +69,14 @@ public:
     std::vector<float> getFrequencies();
     std::vector<float> getGains();
 
-    void setNewFilterParams(float eq_x, float eq_y);
+    void updateFilterParamsFromCoords(std::string filterID, float eq_x, float eq_y);
     void updateResponseCurve();
 
 private:
     juce::Path m_responseCurve;
-    std::vector<FilterCircle> m_filterCircles;
     PicassoEQAudioProcessor& m_audioProcessor;
 
-    dsp::IRRFilter m_lowPassFilter;
-
+    FilterInterface<NUM_FILTERS, FilterCircle, dsp::IRRFilter> m_filterInterface;
 };
 
 //==============================================================================

@@ -88,20 +88,11 @@ float IRRFilter::getMagnitudeForFrequency(float freq, float sampleRate)
 	return std::abs(numerator / denominator);
 }
 
-void IRRFilter::reset(const FilterParams& fp, float sampleRate)
+bool IRRFilter::setCoeffs(const FilterParams& fp, float sampleRate)
 {
-	if (m_fp.fa != fp.fa) {
-		m_biquad.reset();
-	}
-	m_fp = fp;
-	setCoeffs(sampleRate);
-}
+	if (fp.fa == FilterAlgorithm::kLPF1) {
 
-bool IRRFilter::setCoeffs(float sampleRate)
-{
-	if (m_fp.fa == FilterAlgorithm::kLPF1) {
-
-		float theta = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
+		float theta = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
 		float gamma = std::cos(theta) / (1 + std::sin(theta));
 
 		float a0 = (1 - gamma) / 2.0;
@@ -116,9 +107,9 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		m_biquad.setCoeffs(coeffs);
 
 		return true;
-	} else if (m_fp.fa == FilterAlgorithm::kHPF1)
+	} else if (fp.fa == FilterAlgorithm::kHPF1)
 	{
-		float theta = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
+		float theta = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
 		float gamma = std::cos(theta) / (1 + std::sin(theta));
 
 		float a0 = (1 + gamma) / 2.0;
@@ -133,10 +124,10 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		m_biquad.setCoeffs(coeffs);
 
 		return true;
-	} else if (m_fp.fa == FilterAlgorithm::kLPF2)
+	} else if (fp.fa == FilterAlgorithm::kLPF2)
 	{
-		float theta = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		float d = 1 / m_fp.q;
+		float theta = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		float d = 1 / fp.q;
 
 		float beta = 0.5 * ((1 - (d / 2) * std::sin(theta)) / (1 + (d / 2) * std::sin(theta)));
 		float gamma = (0.5 + beta) * std::cos(theta);
@@ -154,10 +145,10 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kHPF2)
+	else if (fp.fa == FilterAlgorithm::kHPF2)
 	{
-		float theta = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		float d = 1 / m_fp.q;
+		float theta = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		float d = 1 / fp.q;
 
 		float beta = 0.5 * ((1 - (d / 2) * std::sin(theta)) / (1 + (d / 2) * std::sin(theta)));
 		float gamma = (0.5 + beta) * std::cos(theta);
@@ -174,14 +165,14 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		m_biquad.setCoeffs(coeffs);
 
 		return true;
-	} else if (m_fp.fa == FilterAlgorithm::kBPF2) {
-		float k = std::tan(juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate);
-		float delta = std::pow(k, 2) * m_fp.q + k + m_fp.q;
+	} else if (fp.fa == FilterAlgorithm::kBPF2) {
+		float k = std::tan(juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate);
+		float delta = std::pow(k, 2) * fp.q + k + fp.q;
 		float a0 = k / delta;
 		float a1 = 0.0;
 		float a2 = -k / delta;
-		float b1 = 2 * m_fp.q * (std::pow(k, 2) - 1) / delta;
-		float b2 = (std::pow(k, 2) * m_fp.q - k + m_fp.q) / delta;
+		float b1 = 2 * fp.q * (std::pow(k, 2) - 1) / delta;
+		float b2 = (std::pow(k, 2) * fp.q - k + fp.q) / delta;
 		float c0 = 1.0;
 		float d0 = 0.0;
 
@@ -189,14 +180,14 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		m_biquad.setCoeffs(coeffs);
 
 		return true;
-	} else if (m_fp.fa == FilterAlgorithm::kBSF2) {
-		float k = std::tan(juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate);
-		float delta = std::pow(k, 2) * m_fp.q + k + m_fp.q;
-		float a0 = m_fp.q * (std::pow(k,2)+1) / delta;
-		float a1 = 2 * m_fp.q * (std::pow(k, 2) - 1) / delta;
-		float a2 = m_fp.q * (std::pow(k,2)+1) / delta;
-		float b1 = 2 * m_fp.q * (std::pow(k, 2) - 1) / delta;
-		float b2 = (std::pow(k, 2) * m_fp.q - k + m_fp.q) / delta;
+	} else if (fp.fa == FilterAlgorithm::kBSF2) {
+		float k = std::tan(juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate);
+		float delta = std::pow(k, 2) * fp.q + k + fp.q;
+		float a0 = fp.q * (std::pow(k,2)+1) / delta;
+		float a1 = 2 * fp.q * (std::pow(k, 2) - 1) / delta;
+		float a2 = fp.q * (std::pow(k,2)+1) / delta;
+		float b1 = 2 * fp.q * (std::pow(k, 2) - 1) / delta;
+		float b2 = (std::pow(k, 2) * fp.q - k + fp.q) / delta;
 		float c0 = 1.0;
 		float d0 = 0.0;
 
@@ -204,8 +195,8 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		m_biquad.setCoeffs(coeffs);
 
 		return true;
-	} else if (m_fp.fa == FilterAlgorithm::kButterLPF2) {
-		float theta_c = juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
+	} else if (fp.fa == FilterAlgorithm::kButterLPF2) {
+		float theta_c = juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
 		float C = 1.0 / std::tan(theta_c);
 
 		float a0 = 1.0 / (1.0 + std::sqrt(2) * C + std::pow(C,2));
@@ -221,8 +212,8 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kButterHPF2) {
-		float theta_c = juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
+	else if (fp.fa == FilterAlgorithm::kButterHPF2) {
+		float theta_c = juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
 		float C = std::tan(theta_c);
 
 		float a0 = 1.0 / (1.0 + std::sqrt(2) * C + std::pow(C, 2));
@@ -238,9 +229,9 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kButterBPF2) {
-		double theta_c = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		double BW = m_fp.cutoffFreq / m_fp.q;
+	else if (fp.fa == FilterAlgorithm::kButterBPF2) {
+		double theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		double BW = fp.cutoffFreq / fp.q;
 		double delta_c = juce::MathConstants<float>::pi * BW / sampleRate;
 
 		if (delta_c >= 0.95 * juce::MathConstants<float>::pi / 2.0) delta_c = 0.95 * juce::MathConstants<float>::pi / 2.0;
@@ -261,9 +252,9 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kButterBSF2) {
-		double theta_c = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		double BW = m_fp.cutoffFreq / m_fp.q;
+	else if (fp.fa == FilterAlgorithm::kButterBSF2) {
+		double theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		double BW = fp.cutoffFreq / fp.q;
 		double delta_c = juce::MathConstants<float>::pi * BW / sampleRate;
 
 		if (delta_c >= 0.95 * juce::MathConstants<float>::pi / 2.0) delta_c = 0.95 * juce::MathConstants<float>::pi / 2.0;
@@ -284,9 +275,9 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kLWRLPF2) {
-		float theta_c = juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		float omega_c = juce::MathConstants<float>::pi * m_fp.cutoffFreq;
+	else if (fp.fa == FilterAlgorithm::kLWRLPF2) {
+		float theta_c = juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		float omega_c = juce::MathConstants<float>::pi * fp.cutoffFreq;
 		float kappa = omega_c / std::tan(theta_c);
 		float delta = std::pow(kappa, 2) + std::pow(omega_c, 2) + 2 * kappa * omega_c;
 
@@ -303,9 +294,9 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kLWRHPF2) {
-		float theta_c = juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		float omega_c = juce::MathConstants<float>::pi * m_fp.cutoffFreq;
+	else if (fp.fa == FilterAlgorithm::kLWRHPF2) {
+		float theta_c = juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		float omega_c = juce::MathConstants<float>::pi * fp.cutoffFreq;
 		float kappa = omega_c / std::tan(theta_c);
 		float delta = std::pow(kappa, 2) + std::pow(omega_c, 2) + 2 * kappa * omega_c;
 
@@ -322,8 +313,8 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kAPF1) {
-		float alpha = (std::tan(juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate) - 1) / (std::tan(juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate) + 1);
+	else if (fp.fa == FilterAlgorithm::kAPF1) {
+		float alpha = (std::tan(juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate) - 1) / (std::tan(juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate) + 1);
 		float a0 = alpha;
 		float a1 = 1.0;
 		float a2 = 0.0;
@@ -337,10 +328,10 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kAPF2) {
-		float BW = m_fp.cutoffFreq / m_fp.q;
+	else if (fp.fa == FilterAlgorithm::kAPF2) {
+		float BW = fp.cutoffFreq / fp.q;
 		float alpha = (std::tan(juce::MathConstants<float>::pi * BW / sampleRate) - 1) / (std::tan(juce::MathConstants<float>::pi * BW / sampleRate) + 1);
-		float beta = -std::cos(2 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate);
+		float beta = -std::cos(2 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate);
 		float a0 = -alpha;
 		float a1 = beta * (1 - alpha);
 		float a2 = 1.0;
@@ -354,9 +345,9 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kLowShelf) {
-		float theta_c = 2*juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		float mu = std::pow(10, m_fp.boostCutDB / 20);
+	else if (fp.fa == FilterAlgorithm::kLowShelf) {
+		float theta_c = 2*juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		float mu = std::pow(10, fp.boostCutDB / 20);
 		float beta = 4 / (1 + mu);
 		float delta = beta * std::tan(theta_c / 2);
 		float gamma = (1 - delta) / (1 + delta);
@@ -373,9 +364,9 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kHiShelf) {
-		float theta_c = 2 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		float mu = std::pow(10, m_fp.boostCutDB / 20);
+	else if (fp.fa == FilterAlgorithm::kHiShelf) {
+		float theta_c = 2 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		float mu = std::pow(10, fp.boostCutDB / 20);
 		float beta = (1 + mu) / 4;
 		float delta = beta * std::tan(theta_c / 2);
 		float gamma = (1 - delta) / (1 + delta);
@@ -392,11 +383,11 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kNCQParaEQ) {
-		float theta_c = 2 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
-		float mu = std::pow(10, m_fp.boostCutDB / 20);
+	else if (fp.fa == FilterAlgorithm::kNCQParaEQ) {
+		float theta_c = 2 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		float mu = std::pow(10, fp.boostCutDB / 20);
 		float zeta = 4 / (1 + mu);
-		float beta = 0.5 * (1-zeta*std::tan(theta_c / 2*m_fp.q))/(1 + zeta * std::tan(theta_c / 2 * m_fp.q));
+		float beta = 0.5 * (1-zeta*std::tan(theta_c / 2*fp.q))/(1 + zeta * std::tan(theta_c / 2 * fp.q));
 		float delta = (0.5 + beta) * std::cos(theta_c);
 		float a0 = 0.5 - beta;
 		float a1 = 0.0;
@@ -411,18 +402,18 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kCQParaEQ) {
-		float K = std::tan(juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate);
-		float Vo = pow(10.0, m_fp.boostCutDB / 20.0);
-		bool bBoost = m_fp.boostCutDB >= 0 ? true : false;
+	else if (fp.fa == FilterAlgorithm::kCQParaEQ) {
+		float K = std::tan(juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate);
+		float Vo = pow(10.0, fp.boostCutDB / 20.0);
+		bool bBoost = fp.boostCutDB >= 0 ? true : false;
 
-		float d_0 = 1.0 + (1.0 / m_fp.q) * K + K * K;
-		float e_0 = 1.0 + (1.0 / (Vo * m_fp.q)) * K + K * K;
-		float alpha = 1.0 + (Vo / m_fp.q) * K + K * K;
+		float d_0 = 1.0 + (1.0 / fp.q) * K + K * K;
+		float e_0 = 1.0 + (1.0 / (Vo * fp.q)) * K + K * K;
+		float alpha = 1.0 + (Vo / fp.q) * K + K * K;
 		float beta = 2.0 * (K * K - 1.0);
-		float gamma = 1.0 - (Vo / m_fp.q) * K + K * K;
-		float delta = 1.0 - (1.0 / m_fp.q) * K + K * K;
-		float eta = 1.0 - (1.0 / (Vo * m_fp.q)) * K + K * K;
+		float gamma = 1.0 - (Vo / fp.q) * K + K * K;
+		float delta = 1.0 - (1.0 / fp.q) * K + K * K;
+		float eta = 1.0 - (1.0 / (Vo * fp.q)) * K + K * K;
 
 		float a0 = bBoost ? alpha / d_0 : d_0 / e_0;
 		float a1 = bBoost ? beta / d_0 : beta / e_0;
@@ -437,8 +428,8 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kLPF1P) {
-		double theta_c = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
+	else if (fp.fa == FilterAlgorithm::kLPF1P) {
+		double theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
 		double gamma = 2.0 - cos(theta_c);
 
 		double filter_b1 = pow((gamma * gamma - 1.0), 0.5) - gamma;
@@ -457,20 +448,20 @@ bool IRRFilter::setCoeffs(float sampleRate)
 
 		return true;
 	}
-	else if (m_fp.fa == FilterAlgorithm::kMMALPF2 || m_fp.fa == FilterAlgorithm::kMMALPF2B) {
-		double theta_c = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq / sampleRate;
+	else if (fp.fa == FilterAlgorithm::kMMALPF2 || fp.fa == FilterAlgorithm::kMMALPF2B) {
+		double theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
 		double resonance_dB = 0;
 
-		if (m_fp.q > 0.707)
+		if (fp.q > 0.707)
 		{
-			double peak = m_fp.q * m_fp.q / pow(m_fp.q * m_fp.q - 0.25, 0.5);
+			double peak = fp.q * fp.q / pow(fp.q * fp.q - 0.25, 0.5);
 			resonance_dB = 20.0 * log10(peak);
 		}
 
 		double resonance = (cos(theta_c) + (sin(theta_c) * sqrt(pow(10.0, (resonance_dB / 10.0)) - 1))) / ((pow(10.0, (resonance_dB / 20.0)) * sin(theta_c)) + 1);
 		double g = pow(10.0, (-resonance_dB / 40.0));
 
-		if (m_fp.fa == FilterAlgorithm::kMMALPF2B)
+		if (fp.fa == FilterAlgorithm::kMMALPF2B)
 			g = 1.0;
 
 		double filter_b1 = (-2.0) * resonance * cos(theta_c);
@@ -491,12 +482,12 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		return true;
 	}
 	// --- kMatchLP2A = TIGHT fit LPF vicanek algo
-	else if (m_fp.fa == FilterAlgorithm::kMatchLP2A)
+	else if (fp.fa == FilterAlgorithm::kMatchLP2A)
 	{
 		// http://vicanek.de/articles/BiquadFits.pdf
-		double theta_c = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq/sampleRate;
+		double theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq/sampleRate;
 
-		double q = 1.0 / (2.0 * m_fp.q);
+		double q = 1.0 / (2.0 * fp.q);
 
 		// --- impulse invariant
 		double b_1 = 0.0;
@@ -519,7 +510,7 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		double phi_1 = sin(theta_c / 2.0) * sin(theta_c / 2.0);
 		double phi_2 = 4.0 * phi_0 * phi_1;
 
-		double R1 = (B0 * phi_0 + B1 * phi_1 + B2 * phi_2) * (m_fp.q * m_fp.q);
+		double R1 = (B0 * phi_0 + B1 * phi_1 + B2 * phi_2) * (fp.q * fp.q);
 		double A0 = B0;
 		double A1 = (R1 - A0 * phi_0) / phi_1;
 
@@ -546,11 +537,11 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		return true;
 		}
 		// --- kMatchLP2B = LOOSE fit LPF vicanek algo
-	else if (m_fp.fa == FilterAlgorithm::kMatchLP2B)
+	else if (fp.fa == FilterAlgorithm::kMatchLP2B)
 	{
 		// http://vicanek.de/articles/BiquadFits.pdf
-		double theta_c = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq/sampleRate;
-		double q = 1.0 / (2.0 * m_fp.q);
+		double theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq/sampleRate;
+		double q = 1.0 / (2.0 * fp.q);
 
 		// --- impulse invariant
 		double b_1 = 0.0;
@@ -568,7 +559,7 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		double f0 = theta_c / juce::MathConstants<float>::pi; // note f0 = fraction of pi, so that f0 = 1.0 = pi = Nyquist
 
 		double r0 = 1.0 + b_1 + b_2;
-		double denom = (1.0 - f0 * f0) * (1.0 - f0 * f0) + (f0 * f0) / (m_fp.q * m_fp.q);
+		double denom = (1.0 - f0 * f0) * (1.0 - f0 * f0) + (f0 * f0) / (fp.q * fp.q);
 		denom = pow(denom, 0.5);
 		double r1 = ((1.0 - b_1 + b_2) * f0 * f0) / (denom);
 
@@ -590,11 +581,11 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		return true;
 		}
 		// --- kMatchBP2A = TIGHT fit BPF vicanek algo
-	else if (m_fp.fa == FilterAlgorithm::kMatchBP2A)
+	else if (fp.fa == FilterAlgorithm::kMatchBP2A)
 	{
 		// http://vicanek.de/articles/BiquadFits.pdf
-		double theta_c = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq/sampleRate;
-		double q = 1.0 / (2.0 * m_fp.q);
+		double theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq/sampleRate;
+		double q = 1.0 / (2.0 * fp.q);
 
 		// --- impulse invariant
 		double b_1 = 0.0;
@@ -641,11 +632,11 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		return true;
 		}
 		// --- kMatchBP2B = LOOSE fit BPF vicanek algo
-	else if (m_fp.fa == FilterAlgorithm::kMatchBP2B)
+	else if (fp.fa == FilterAlgorithm::kMatchBP2B)
 	{
 		// http://vicanek.de/articles/BiquadFits.pdf
-		double theta_c = 2.0 * juce::MathConstants<float>::pi * m_fp.cutoffFreq/sampleRate;
-		double q = 1.0 / (2.0 * m_fp.q);
+		double theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq/sampleRate;
+		double q = 1.0 / (2.0 * fp.q);
 
 		// --- impulse invariant
 		double b_1 = 0.0;
@@ -662,11 +653,11 @@ bool IRRFilter::setCoeffs(float sampleRate)
 		// --- LOOSE FIT --- //
 		double f0 = theta_c / juce::MathConstants<float>::pi; // note f0 = fraction of pi, so that f0 = 1.0 = pi = Nyquist
 
-		double r0 = (1.0 + b_1 + b_2) / (juce::MathConstants<float>::pi * f0 * m_fp.q);
-		double denom = (1.0 - f0 * f0) * (1.0 - f0 * f0) + (f0 * f0) / (m_fp.q * m_fp.q);
+		double r0 = (1.0 + b_1 + b_2) / (juce::MathConstants<float>::pi * f0 * fp.q);
+		double denom = (1.0 - f0 * f0) * (1.0 - f0 * f0) + (f0 * f0) / (fp.q * fp.q);
 		denom = pow(denom, 0.5);
 
-		double r1 = ((1.0 - b_1 + b_2) * (f0 / m_fp.q)) / (denom);
+		double r1 = ((1.0 - b_1 + b_2) * (f0 / fp.q)) / (denom);
 
 		double a_1 = -r1 / 2.0;
 		double a_0 = (r0 - a_1) / 2.0;

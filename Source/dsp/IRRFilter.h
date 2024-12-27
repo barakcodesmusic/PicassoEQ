@@ -107,14 +107,12 @@ public:
 	~IRRFilter();
 	float processSample(float xn);
 	float getMagnitudeForFrequency(float freq, float sampleRate);
-	void reset(const FilterParams& fp, float sampleRate);
+	bool setCoeffs(const FilterParams& fp, float sampleRate);
 
-private:
-	bool setCoeffs(float sampleRate); // Using filter params
+private:	
 	size_t getFilterOrder(float sampleRate);
 
 	BiQuad m_biquad;
-	FilterParams m_fp;
 };
 
 }

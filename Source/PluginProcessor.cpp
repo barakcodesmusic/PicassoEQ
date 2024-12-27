@@ -212,8 +212,8 @@ void PicassoEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
 
-    juce::MemoryOutputStream mos(destData, true);
-    apvts.state.writeToStream(mos);
+    //juce::MemoryOutputStream mos(destData, true);
+    //apvts.state.writeToStream(mos);
 }
 
 void PicassoEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -221,12 +221,12 @@ void PicassoEQAudioProcessor::setStateInformation (const void* data, int sizeInB
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
 
-    auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
-    if (tree.isValid())
-    {
-        apvts.replaceState(tree);
-        updateFilters();
-    }
+    //auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
+    //if (tree.isValid())
+    //{
+    //    apvts.replaceState(tree);
+    //    updateFilters();
+    //}
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::createParameterLayout()
@@ -254,11 +254,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
     return layout;
 }
 
-dsp::FilterParams PicassoEQAudioProcessor::getUserFilterParams(int filterIndex)
+dsp::FilterParams PicassoEQAudioProcessor::getUserFilterParams(int filterIndex) const
 {
     // TODO: Cleaner way to store these names
     std::string filterName{ "Filter" + std::to_string(filterIndex) };
-    dsp::FilterParams fp;
+    dsp::FilterParams fp{};
     fp.cutoffFreq = apvts.getRawParameterValue(filterName+"LowCut Freq")->load();
     fp.q = apvts.getRawParameterValue(filterName + "Q")->load();
     fp.boostCutDB = apvts.getRawParameterValue(filterName + "BoostCutDB")->load();
@@ -272,8 +272,8 @@ void PicassoEQAudioProcessor::updateFilters()
     for (int i = 0; i < leftChain.filters.size(); ++i) {
         auto filterParams = getUserFilterParams(i);
 
-        leftChain.reset(filterParams, i, getSampleRate());
-        rightChain.reset(filterParams, i, getSampleRate());
+        leftChain.setCoeffs(filterParams, i, getSampleRate());
+        rightChain.setCoeffs(filterParams, i, getSampleRate());
     }
 }
 

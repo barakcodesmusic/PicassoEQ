@@ -19,8 +19,8 @@ constexpr int NUM_FILTERS = 4;
 template <int NumFilters, typename FilterType>
 class FilterChain {
 public:
-    void reset(dsp::FilterParams& fp, int i, float sampleRate) {
-        filters[i].reset(fp, sampleRate);
+    void setCoeffs(dsp::FilterParams& fp, int i, float sampleRate) {
+        filters[i].setCoeffs(fp, sampleRate);
     }
     float processSample(float xn) {
         float mag = 1.f;
@@ -29,6 +29,15 @@ public:
         }
         return mag;
     };
+
+    float getMagnitudeForFrequency(float freq, float sampleRate) {
+        float mag = 1.f;
+        for (auto& filter : filters) {
+            //DBG("Freq: " << freq << " mag: " << filter.getMagnitudeForFrequency(freq, sampleRate));
+            mag *= filter.getMagnitudeForFrequency(freq, sampleRate);
+        }
+        return mag;
+    }
 
     std::array<FilterType, NumFilters> filters;
 };
@@ -76,7 +85,7 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts{ *this, nullptr, "Parameters", createParameterLayout() };
 
-    dsp::FilterParams getUserFilterParams(int filterIndex);
+    dsp::FilterParams getUserFilterParams(int filterIndex) const;
     void updateFilters();
 
 private:
