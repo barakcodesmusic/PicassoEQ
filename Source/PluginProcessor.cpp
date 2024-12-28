@@ -206,8 +206,8 @@ bool PicassoEQAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* PicassoEQAudioProcessor::createEditor()
 {
-    //return new PicassoEQAudioProcessorEditor (*this);
-    return new juce::GenericAudioProcessorEditor(*this);
+    return new PicassoEQAudioProcessorEditor (*this);
+    //return new juce::GenericAudioProcessorEditor(*this);
 }
 
 //==============================================================================
