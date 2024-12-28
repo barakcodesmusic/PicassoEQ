@@ -12,37 +12,6 @@
 #include "PluginProcessor.h"
 
 #include <vector>
-#include <array>
-#include <map>
-
-template <int NumFilters, typename Component, typename FilterType>
-struct FilterInterface {
-    // Returns >0 if x/y inside bounds of one of the circles
-    // this FilterInfo object owns
-    int inBoundsOfCircle(int x, int y) {
-        for (int i = 0; i < NumFilters; ++i) {
-            if (fcomps[i].getBounds().contains(x, y)) {
-                return i;
-            }
-        }
-        return -1;
-    };
-    void setCoeffs(dsp::FilterParams& fp, int i, float sampleRate) {
-        fchain.setCoeffs(fp, i, sampleRate);
-    }
-    int getFilterIndex(Component& comp) {
-        for (int i = 0; i < NumFilters; ++i) {
-            if (fcomps[i] == comp) {
-                return i;
-            }
-        }
-        jassert(false); // Should never reach here, means we didn't find passed down filter
-    }
-
-    int size = NumFilters;
-    FilterChain<NumFilters, FilterType> fchain;
-    std::array<Component, NumFilters> fcomps;
-};
 
 class FilterCircle : public juce::Component {
 public:
@@ -75,8 +44,6 @@ public:
 private:
     juce::Path m_responseCurve;
     PicassoEQAudioProcessor& m_audioProcessor;
-
-    FilterInterface<NUM_FILTERS, FilterCircle, dsp::IRRFilter> m_filterInterface;
 };
 
 //==============================================================================
