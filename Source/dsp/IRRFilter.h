@@ -109,6 +109,8 @@ public:
 	float getMagnitudeForFrequency(float freq, float sampleRate);
 	bool setCoeffs(const FilterParams& fp, float sampleRate);
 
+	static bool algorithmRequiresGain(const FilterAlgorithm& fa);
+
 private:	
 	size_t getFilterOrder(float sampleRate);
 

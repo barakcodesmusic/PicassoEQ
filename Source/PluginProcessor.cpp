@@ -212,8 +212,8 @@ void PicassoEQAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
 
-    //juce::MemoryOutputStream mos(destData, true);
-    //apvts.state.writeToStream(mos);
+    juce::MemoryOutputStream mos(destData, true);
+    apvts.state.writeToStream(mos);
 }
 
 void PicassoEQAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -221,12 +221,12 @@ void PicassoEQAudioProcessor::setStateInformation (const void* data, int sizeInB
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
 
-    //auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
-    //if (tree.isValid())
-    //{
-    //    apvts.replaceState(tree);
-    //    updateFilters();
-    //}
+    auto tree = juce::ValueTree::readFromData(data, sizeInBytes);
+    if (tree.isValid())
+    {
+        apvts.replaceState(tree);
+        updateFilters();
+    }
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::createParameterLayout()
@@ -241,7 +241,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
             20.f));
         layout.add(std::make_unique<juce::AudioParameterFloat>(filterName+"Q",
             "Q",
-            juce::NormalisableRange<float>(0.1f, 18.f, 0.1f, 1.0f),
+            juce::NormalisableRange<float>(0.1f, 18.f, 0.1f, 1.f),
             1.0f));
         layout.add(std::make_unique<juce::AudioParameterFloat>(filterName + "BoostCutDB",
             "BoostCutDB",

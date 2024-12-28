@@ -2,6 +2,7 @@
 #include "IRRFilter.h"
 #include <cmath>
 #include <iostream>
+#include <algorithm>
 #include <juce_core/juce_core.h>
 
 namespace dsp {
@@ -56,7 +57,7 @@ float IRRFilter::processSample(float xn)
 
 size_t IRRFilter::getFilterOrder(float sampleRate) {
 	// -1 because a0 term, -2 because dry and wet in coeffs
-	return (static_cast<size_t> (m_biquad.m_coeffs.size()) - 3) / 2;
+	return (static_cast<size_t> (m_biquad.m_coeffs.size()) - 3) / 2.f;
 }
 
 float IRRFilter::getMagnitudeForFrequency(float freq, float sampleRate)
@@ -67,12 +68,12 @@ float IRRFilter::getMagnitudeForFrequency(float freq, float sampleRate)
 
 	jassert(freq >= 0 && freq <= sampleRate * 0.5);
 
-	Complex<double> numerator = 0.0, denominator = 0.0, factor = 1.0;
-	Complex<double> jw = std::exp(-juce::MathConstants<float>::twoPi * freq * j / sampleRate);
+	Complex<float> numerator = 0.0, denominator = 0.0, factor = 1.0;
+	Complex<float> jw = std::exp(-juce::MathConstants<float>::twoPi * freq * j / sampleRate);
 
 	for (size_t n = 0; n <= order; ++n)
 	{
-		numerator += static_cast<double> (coefs[n]) * factor;
+		numerator += static_cast<float> (coefs[n]) * factor;
 		factor *= jw;
 	}
 
@@ -81,7 +82,7 @@ float IRRFilter::getMagnitudeForFrequency(float freq, float sampleRate)
 
 	for (size_t n = order + 1; n <= 2 * order; ++n)
 	{
-		denominator += static_cast<double> (coefs[n]) * factor;
+		denominator += static_cast<float> (coefs[n]) * factor;
 		factor *= jw;
 	}
 
@@ -90,6 +91,8 @@ float IRRFilter::getMagnitudeForFrequency(float freq, float sampleRate)
 
 bool IRRFilter::setCoeffs(const FilterParams& fp, float sampleRate)
 {
+	auto& algoStr = stringToFilterAlgorithm.find(fp.fa)->second;
+	DBG("Filter ALGO: " << algoStr);
 	if (fp.fa == FilterAlgorithm::kLPF1) {
 
 		float theta = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
@@ -384,16 +387,32 @@ bool IRRFilter::setCoeffs(const FilterParams& fp, float sampleRate)
 		return true;
 	}
 	else if (fp.fa == FilterAlgorithm::kNCQParaEQ) {
-		float theta_c = 2 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
-		float mu = std::pow(10, fp.boostCutDB / 20);
-		float zeta = 4 / (1 + mu);
-		float beta = 0.5 * (1-zeta*std::tan(theta_c / 2*fp.q))/(1 + zeta * std::tan(theta_c / 2 * fp.q));
-		float delta = (0.5 + beta) * std::cos(theta_c);
-		float a0 = 0.5 - beta;
+
+		DBG("NCQ BOOST CUT: " << std::to_string(fp.boostCutDB) << " " << std::to_string(fp.cutoffFreq) << " " << std::to_string(fp.q));
+
+		// --- see book for formulae
+		float theta_c = 2.0 * juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate;
+		float mu = std::pow(10.0, fp.boostCutDB / 20.0);
+
+		// --- clamp to 0.95 pi/2 (you can experiment with this)
+		float tanArg = theta_c / (2.0 * fp.q);
+		if (tanArg >= (0.95 * juce::MathConstants<float>::pi / 2.0)) tanArg = 0.95 * juce::MathConstants<float>::pi / 2.0;
+
+		// --- intermediate variables (you can condense this if you wish)
+		float zeta = 4.0 / (1.0 + mu);
+		float betaNumerator = 1.0 - zeta * std::tan(tanArg);
+		float betaDenominator = 1.0 + zeta * std::tan(tanArg);
+
+		float beta = 0.5 * (betaNumerator / betaDenominator);
+		float gamma = (0.5 + beta) * (std::cos(theta_c));
+		float alpha = (0.5 - beta);
+
+		// --- update coeffs
+		float a0 = alpha;
 		float a1 = 0.0;
-		float a2 = -(0.5 - beta);
-		float b1 = -delta;
-		float b2 = 2*beta;
+		float a2 = -alpha;
+		float b1 = -2.0 * gamma;
+		float b2 = 2.0 * beta;
 		float c0 = mu - 1.0;
 		float d0 = 1.0;
 
@@ -404,7 +423,7 @@ bool IRRFilter::setCoeffs(const FilterParams& fp, float sampleRate)
 	}
 	else if (fp.fa == FilterAlgorithm::kCQParaEQ) {
 		float K = std::tan(juce::MathConstants<float>::pi * fp.cutoffFreq / sampleRate);
-		float Vo = pow(10.0, fp.boostCutDB / 20.0);
+		float Vo = std::pow(10.0, fp.boostCutDB / 20.0);
 		bool bBoost = fp.boostCutDB >= 0 ? true : false;
 
 		float d_0 = 1.0 + (1.0 / fp.q) * K + K * K;
@@ -679,6 +698,14 @@ bool IRRFilter::setCoeffs(const FilterParams& fp, float sampleRate)
 	else {
 	}
 	return false;
+}
+
+bool IRRFilter::algorithmRequiresGain(const FilterAlgorithm& fa)
+{
+	std::vector<FilterAlgorithm> gainAlgos = {
+		kLowShelf, kHiShelf, kNCQParaEQ, kCQParaEQ
+	};
+	return std::find(gainAlgos.begin(), gainAlgos.end(), fa) != gainAlgos.end();
 }
 
 }

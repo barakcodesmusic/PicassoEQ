@@ -69,7 +69,7 @@ public:
     std::vector<float> getFrequencies();
     std::vector<float> getGains();
 
-    void updateFilterParamsFromCoords(std::string filterID, float eq_x, float eq_y);
+    void updateFilterParamsFromCoords(int filterIndex, float eq_x, float eq_y);
     void updateResponseCurve();
 
 private:
