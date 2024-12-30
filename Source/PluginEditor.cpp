@@ -69,32 +69,6 @@ std::vector<juce::Component*> PicassoEQAudioProcessorEditor::getComps()
 EQGraphicComponent::EQGraphicComponent(PicassoEQAudioProcessor& ap) :
     m_audioProcessor(ap)
 {
-    //jassert(m_filterInterface.size >= 2);
-    
-    //// TODO: Make this tied to NUM_FILTERS parameter?
-    //std::array<float, NUM_FILTERS> startFreqs{40, 300, 2000, 12000};
-    //// std::array<float, NUM_FILTERS> startFreqs{ 40 };
-    //for (int i = 0; i < m_filterInterface.size; ++i) {
-    //    // TODO: check if default value exists?
-    //    std::string filterID{ "Filter" + std::to_string(i) };
-    //    if (i == 0) {
-    //        float normalized = (dsp::FilterAlgorithm::kHPF2) / float(dsp::stringToFilterAlgorithm.size());
-    //        m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(normalized);
-    //    }
-    //    else if (i == m_filterInterface.size - 1) {
-    //        float normalized = dsp::FilterAlgorithm::kLPF2 / float(dsp::stringToFilterAlgorithm.size());
-    //        m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(normalized);
-    //    }
-    //    else {
-    //        float normalized = (dsp::FilterAlgorithm::kCQParaEQ + 1) / float(dsp::stringToFilterAlgorithm.size());
-    //        m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(normalized);
-    //    }
-    //    
-    //    //m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(startFreqs[i] / 20000.f);
-    //    //m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(0.5f);   
-    //    //m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(0.45f);
-    //}
-
     for (auto& comp : m_filterInterface.fcomps) {
         addAndMakeVisible(comp);
     }
@@ -355,7 +329,6 @@ void EQGraphicComponent::updateResponseCurve()
 
     const float outputMinY = responseArea.getBottom();
     const float outputMaxY = responseArea.getY();
-    //DBG("Bottom: " << outputMinY << " Top: " << outputMaxY << " Center: " << responseArea.getCentreY() << " Height: " << responseArea.getHeight());
     auto map = [outputMinY, outputMaxY](float input) {
         return jmap(input, -24.f, 24.f, outputMinY, outputMaxY);
     };
@@ -382,7 +355,6 @@ void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
 
         updateFilterParamsFromCoords(filterIndex, newX, newY);
     }
-    // Set UI side filter from audioProcessor.filterParams
     updateChain();
     repaint();
 }
