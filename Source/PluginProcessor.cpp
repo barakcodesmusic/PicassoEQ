@@ -104,13 +104,16 @@ void PicassoEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
 
     spec.sampleRate = sampleRate;
 
+    leftChain.prepare(spec);
+    rightChain.prepare(spec);
+
     updateFilters();
 
     osc.initialise([](float x) { return std::sin(x); });
 
     spec.numChannels = getTotalNumOutputChannels();
     osc.prepare(spec);
-    osc.setFrequency(1000);
+    osc.setFrequency(440);
 }
 
 void PicassoEQAudioProcessor::releaseResources()
@@ -169,11 +172,11 @@ void PicassoEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 
     updateFilters();
 
-#ifdef OSC_DEBUG
+    juce::dsp::AudioBlock<float> block(buffer);
 
+#ifdef OSC_DEBUG
     buffer.clear();
 
-    juce::dsp::AudioBlock<float> block(buffer);
     for( int i = 0; i < buffer.getNumSamples(); ++i )
     {
         buffer.setSample(0, i, osc.processSample(0));
@@ -184,12 +187,14 @@ void PicassoEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
 #endif
 
     
-    // ..do something to the data...
-    for (int i = 0; i < buffer.getNumSamples(); ++i) {
-        // 2 channels
-        *buffer.getWritePointer(0, i) = leftChain.processSample(*buffer.getReadPointer(0, i));
-        *buffer.getWritePointer(1, i) = rightChain.processSample(*buffer.getReadPointer(1, i));
-    }
+    auto leftBlock = block.getSingleChannelBlock(0);
+    auto rightBlock = block.getSingleChannelBlock(1);
+
+    juce::dsp::ProcessContextReplacing<float> leftContext(leftBlock);
+    juce::dsp::ProcessContextReplacing<float> rightContext(rightBlock);
+
+    leftChain.process(leftContext);
+    rightChain.process(rightContext);
 
 }
 
@@ -247,33 +252,85 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
             "BoostCutDB",
             juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
             0.0f));
-        juce::StringArray filterAlgoStrs = dsp::getFilterAlgoStrs();
-        layout.add(std::make_unique<juce::AudioParameterChoice>(filterName+"Filter Algorithm", "Filter Algorithn", filterAlgoStrs, 0));
+        //juce::StringArray filterAlgoStrs = dsp::getFilterAlgoStrs();
+        //layout.add(std::make_unique<juce::AudioParameterChoice>(filterName+"Filter Algorithm", "Filter Algorithn", filterAlgoStrs, 0));
     }
 
     return layout;
 }
 
-dsp::FilterParams PicassoEQAudioProcessor::getUserFilterParams(int filterIndex) const
+FilterParams PicassoEQAudioProcessor::getUserFilterParams(int filterIndex) const
 {
     // TODO: Cleaner way to store these names
     std::string filterName{ "Filter" + std::to_string(filterIndex) };
-    dsp::FilterParams fp{};
+    FilterParams fp{};
     fp.cutoffFreq = apvts.getRawParameterValue(filterName+"LowCut Freq")->load();
     fp.q = apvts.getRawParameterValue(filterName + "Q")->load();
     fp.boostCutDB = apvts.getRawParameterValue(filterName + "BoostCutDB")->load();
-    fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue(filterName + "Filter Algorithm")->load());
+    //fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue(filterName + "Filter Algorithm")->load());
 
     return fp;
 }
 
+void updateCoefficients(Coefficients& old, const Coefficients& replacements)
+{
+    *old = *replacements;
+}
+
+Coefficients makePeakFilter(const FilterParams& filterParams, double sampleRate)
+{
+    return juce::dsp::IIR::Coefficients<float>::makePeakFilter(sampleRate,
+        filterParams.cutoffFreq,
+        filterParams.q,
+        juce::Decibels::decibelsToGain(filterParams.boostCutDB));
+}
+
+void PicassoEQAudioProcessor::updateLowCutFilters(const FilterParams& filterParams)
+{
+    auto cutCoefficients = makeLowCutFilter(filterParams, getSampleRate());
+    auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
+    auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
+
+    //leftChain.setBypassed<ChainPositions::LowCut>(filterParams.lowCutBypassed);
+    //rightChain.setBypassed<ChainPositions::LowCut>(filterParams.lowCutBypassed);
+
+    updateCutFilter(rightLowCut, cutCoefficients, SLOPE);
+    updateCutFilter(leftLowCut, cutCoefficients, SLOPE);
+}
+
+void PicassoEQAudioProcessor::updateHighCutFilters(const FilterParams& filterParams)
+{
+    auto highCutCoefficients = makeHighCutFilter(filterParams, getSampleRate());
+
+    auto& leftHighCut = leftChain.get<ChainPositions::HighCut>();
+    auto& rightHighCut = rightChain.get<ChainPositions::HighCut>();
+
+    //leftChain.setBypassed<ChainPositions::HighCut>(filterParams.highCutBypassed);
+    //rightChain.setBypassed<ChainPositions::HighCut>(filterParams.highCutBypassed);
+
+    updateCutFilter(leftHighCut, highCutCoefficients, SLOPE);
+    updateCutFilter(rightHighCut, highCutCoefficients, SLOPE);
+}
+
 void PicassoEQAudioProcessor::updateFilters()
 {
-    for (int i = 0; i < leftChain.filters.size(); ++i) {
+    for (int i = 0; i < NUM_FILTERS; ++i) { // TODO: More easily scalable design (NUM_FILTERS???)
         auto filterParams = getUserFilterParams(i);
 
-        leftChain.setCoeffs(filterParams, i, getSampleRate());
-        rightChain.setCoeffs(filterParams, i, getSampleRate());
+        if (i == 0) {
+            updateLowCutFilters(filterParams);
+        }
+        else if (i == NUM_FILTERS - 1) {
+            updateHighCutFilters(filterParams);
+        }
+        else { // TODO: Fix... so bad
+            if (i == 1) {
+                updatePeakFilter<ChainPositions::Peak1>(filterParams);
+            }
+            else if (i == 2) {
+                updatePeakFilter<ChainPositions::Peak2>(filterParams);
+            }
+        } 
     }
 }
 

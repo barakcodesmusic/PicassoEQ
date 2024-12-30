@@ -69,35 +69,10 @@ std::vector<juce::Component*> PicassoEQAudioProcessorEditor::getComps()
 EQGraphicComponent::EQGraphicComponent(PicassoEQAudioProcessor& ap) :
     m_audioProcessor(ap)
 {
-    jassert(m_filterInterface.size >= 2);
-    
-    // TODO: Make this tied to NUM_FILTERS parameter?
-    std::array<float, NUM_FILTERS> startFreqs{40, 300, 2000, 12000};
-    // std::array<float, NUM_FILTERS> startFreqs{ 40 };
-    for (int i = 0; i < m_filterInterface.size; ++i) {
-        // TODO: check if default value exists?
-        std::string filterID{ "Filter" + std::to_string(i) };
-        if (i == 0) {
-            float normalized = (dsp::FilterAlgorithm::kHPF2) / float(dsp::stringToFilterAlgorithm.size());
-            m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(normalized);
-        }
-        else if (i == m_filterInterface.size - 1) {
-            float normalized = dsp::FilterAlgorithm::kLPF2 / float(dsp::stringToFilterAlgorithm.size());
-            m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(normalized);
-        }
-        else {
-            float normalized = (dsp::FilterAlgorithm::kCQParaEQ + 1) / float(dsp::stringToFilterAlgorithm.size());
-            m_audioProcessor.apvts.getParameter(filterID + "Filter Algorithm")->setValueNotifyingHost(normalized);
-        }
-        
-        //m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(startFreqs[i] / 20000.f);
-        //m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(0.5f);   
-        //m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(0.45f);
-    }
-
     for (auto& comp : m_filterInterface.fcomps) {
         addAndMakeVisible(comp);
     }
+    updateChain();
     repaint();
 }
 
@@ -196,7 +171,7 @@ void EQGraphicComponent::paint(juce::Graphics& g)
 void EQGraphicComponent::resized() {
     auto bounds = getAnalysisArea();
 
-    auto mapFPsToPositions = [&bounds](const auto& fp){
+    auto mapFPsToPositions = [&bounds](const auto& fp, int i){
 
         //DBG(width << " " << top << " " << bottom << " " << centerY);
 
@@ -206,7 +181,7 @@ void EQGraphicComponent::resized() {
         
         float posX = bounds.getX() + bounds.getWidth() * juce::mapFromLog10(fp.cutoffFreq, 20.f, 20000.f);
         float posY = 0.0;
-        if (dsp::IRRFilter::algorithmRequiresGain(fp.fa)) {
+        if (i == 1 || i == 2) { // PEAK FILTERS, TODO: Make more generic
             // TODO: Figure out how to calculate q?
             posY = juce::jmap(fp.boostCutDB, -24.f, 24.f, bottom, top);
         }
@@ -227,7 +202,7 @@ void EQGraphicComponent::resized() {
     for (int i = 0; i < m_filterInterface.size; ++i) {
         auto& fp = m_audioProcessor.getUserFilterParams(i);
         //DBG("index: " << i << " cutoff: " << fp.cutoffFreq << " q: " << fp.q << " fa: " << fp.fa << " boost/cut: " << fp.boostCutDB);
-        juce::Rectangle<int> filterBound = mapFPsToPositions(fp);
+        juce::Rectangle<int> filterBound = mapFPsToPositions(fp, i);
         m_filterInterface.fcomps[i].setBounds(filterBound);
     }
     repaint();
@@ -260,13 +235,43 @@ void EQGraphicComponent::updateFilterParamsFromCoords(int filterIndex, float eq_
     std::string filterID{ "Filter" + std::to_string(filterIndex) };
     m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(cutoffFreq);
 
-    if (m_audioProcessor.getUserFilterParams(filterIndex).fa == dsp::FilterAlgorithm::kCQParaEQ) {
+    if (filterIndex == 1 || filterIndex == 2) {
         q = 1.f / 18.f;
     }
     m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(q);
     m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(boostCutDB);
 
     //DBG("Cutoff: " << cutoffFreq << ", Q : " << q << ", Boost/Cut : " << boostCutDB);
+}
+
+void EQGraphicComponent::updateChain()
+{
+    auto filterParamsLowCut = m_audioProcessor.getUserFilterParams(0);
+    auto filterParamsPeak1 = m_audioProcessor.getUserFilterParams(1);
+    auto filterParamsPeak2 = m_audioProcessor.getUserFilterParams(2);
+    auto filterParamsHiCut = m_audioProcessor.getUserFilterParams(3);
+
+    //monoChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
+    //monoChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
+    //monoChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
+
+    auto lowCutCoefficients = makeLowCutFilter(filterParamsLowCut, m_audioProcessor.getSampleRate());
+
+    auto peak1Coefficients = makePeakFilter(filterParamsPeak1, m_audioProcessor.getSampleRate());
+    updateCoefficients(m_filterInterface.fchain.get<ChainPositions::Peak1>().coefficients, peak1Coefficients);
+
+    auto peak2Coefficients = makePeakFilter(filterParamsPeak2, m_audioProcessor.getSampleRate());
+    updateCoefficients(m_filterInterface.fchain.get<ChainPositions::Peak2>().coefficients, peak2Coefficients);
+
+    auto highCutCoefficients = makeHighCutFilter(filterParamsHiCut, m_audioProcessor.getSampleRate());
+
+    updateCutFilter(m_filterInterface.fchain.get<ChainPositions::LowCut>(),
+        lowCutCoefficients,
+        SLOPE);
+
+    updateCutFilter(m_filterInterface.fchain.get<ChainPositions::HighCut>(),
+        highCutCoefficients,
+        SLOPE);
 }
 
 void EQGraphicComponent::updateResponseCurve()
@@ -276,28 +281,54 @@ void EQGraphicComponent::updateResponseCurve()
 
     auto w = responseArea.getWidth();
 
+    auto& lowcut = m_filterInterface.fchain.get<ChainPositions::LowCut>();
+    auto& peak1 = m_filterInterface.fchain.get<ChainPositions::Peak1>();
+    auto& peak2 = m_filterInterface.fchain.get<ChainPositions::Peak2>();
+    auto& highcut = m_filterInterface.fchain.get<ChainPositions::HighCut>();
+
+    auto sampleRate = m_audioProcessor.getSampleRate();
+
     std::vector<double> mags;
 
     mags.resize(w);
-
-    // Set UI side filter from audioProcessor.filterParams
-    for (size_t i = 0; i < m_filterInterface.size; ++i) {
-        auto& fp = m_audioProcessor.getUserFilterParams(i);
-        m_filterInterface.setCoeffs(fp, i, m_audioProcessor.getSampleRate());
-    }
-    
     
     for (int i = 0; i < w; ++i) {
-        float xPos = float(i) / float(w);
-        auto freq = mapToLog10(xPos, 20.f, 20000.f);
-        float mag = m_filterInterface.fchain.getMagnitudeForFrequency(freq, m_audioProcessor.getSampleRate());
+        double mag = 1.f;
+        auto freq = mapToLog10(double(i) / double(w), 20.0, 20000.0);
+
+        //if (!monoChain.isBypassed<ChainPositions::Peak>())
+            mag *= peak1.coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            mag *= peak2.coefficients->getMagnitudeForFrequency(freq, sampleRate);
+
+        //if (!monoChain.isBypassed<ChainPositions::LowCut>())
+        //{
+            if (!lowcut.isBypassed<0>())
+                mag *= lowcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!lowcut.isBypassed<1>())
+                mag *= lowcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!lowcut.isBypassed<2>())
+                mag *= lowcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!lowcut.isBypassed<3>())
+                mag *= lowcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        //}
+
+        //if (!monoChain.isBypassed<ChainPositions::HighCut>())
+        //{
+            if (!highcut.isBypassed<0>())
+                mag *= highcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!highcut.isBypassed<1>())
+                mag *= highcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!highcut.isBypassed<2>())
+                mag *= highcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            if (!highcut.isBypassed<3>())
+                mag *= highcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+        //}
+
         mags[i] = Decibels::gainToDecibels(mag);
-        //DBG("Mag at freq: " << std::to_string(freq) << ": " << std::to_string(mags[i]));
     }
 
     const float outputMinY = responseArea.getBottom();
     const float outputMaxY = responseArea.getY();
-    //DBG("Bottom: " << outputMinY << " Top: " << outputMaxY << " Center: " << responseArea.getCentreY() << " Height: " << responseArea.getHeight());
     auto map = [outputMinY, outputMaxY](float input) {
         return jmap(input, -24.f, 24.f, outputMinY, outputMaxY);
     };
@@ -323,9 +354,9 @@ void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
         comp.setBounds(newX, newY, w, h);
 
         updateFilterParamsFromCoords(filterIndex, newX, newY);
-
-        repaint();
     }
+    updateChain();
+    repaint();
 }
 
 std::vector<float> EQGraphicComponent::getXs(const std::vector<float>& freqs, float left, float width)

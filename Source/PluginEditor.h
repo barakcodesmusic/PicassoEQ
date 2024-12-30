@@ -12,10 +12,8 @@
 #include "PluginProcessor.h"
 
 #include <vector>
-#include <array>
-#include <map>
 
-template <int NumFilters, typename Component, typename FilterType>
+template <int NumFilters, typename Component, typename FilterChain>
 struct FilterInterface {
     // Returns >0 if x/y inside bounds of one of the circles
     // this FilterInfo object owns
@@ -27,7 +25,7 @@ struct FilterInterface {
         }
         return -1;
     };
-    void setCoeffs(dsp::FilterParams& fp, int i, float sampleRate) {
+    void setCoeffs(FilterParams& fp, int i, float sampleRate) {
         fchain.setCoeffs(fp, i, sampleRate);
     }
     int getFilterIndex(Component& comp) {
@@ -40,7 +38,7 @@ struct FilterInterface {
     }
 
     int size = NumFilters;
-    FilterChain<NumFilters, FilterType> fchain;
+    FilterChain fchain;
     std::array<Component, NumFilters> fcomps;
 };
 
@@ -70,13 +68,13 @@ public:
     std::vector<float> getGains();
 
     void updateFilterParamsFromCoords(int filterIndex, float eq_x, float eq_y);
+    void updateChain();
     void updateResponseCurve();
 
 private:
     juce::Path m_responseCurve;
     PicassoEQAudioProcessor& m_audioProcessor;
-
-    FilterInterface<NUM_FILTERS, FilterCircle, dsp::IRRFilter> m_filterInterface;
+    FilterInterface<NUM_FILTERS, FilterCircle, MonoChain> m_filterInterface;
 };
 
 //==============================================================================
