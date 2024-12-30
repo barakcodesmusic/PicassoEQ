@@ -9,6 +9,8 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+#include <algorithm>
+
 //==============================================================================
 PicassoEQAudioProcessorEditor::PicassoEQAudioProcessorEditor (PicassoEQAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), 
@@ -67,7 +69,8 @@ std::vector<juce::Component*> PicassoEQAudioProcessorEditor::getComps()
 }
 
 EQGraphicComponent::EQGraphicComponent(PicassoEQAudioProcessor& ap) :
-    m_audioProcessor(ap)
+    m_audioProcessor(ap),
+    m_drawing(false)
 {
     for (auto& comp : m_filterInterface.fcomps) {
         addAndMakeVisible(comp);
@@ -165,7 +168,9 @@ void EQGraphicComponent::paint(juce::Graphics& g)
     g.setColour(Colours::white);
     g.strokePath(m_responseCurve, PathStrokeType(2.f));
 
-    updateResponseCurve();
+    g.setColour(Colours::red);
+    g.strokePath(m_drawCurve, PathStrokeType(2.f));
+    //updateResponseCurve();
 }
 
 void EQGraphicComponent::resized() {
@@ -199,12 +204,16 @@ void EQGraphicComponent::resized() {
         return juce::Rectangle<int>{static_cast<int>(posX), static_cast<int>(posY), 25, 25};
     };
 
-    for (int i = 0; i < m_filterInterface.size; ++i) {
-        auto& fp = m_audioProcessor.getUserFilterParams(i);
-        //DBG("index: " << i << " cutoff: " << fp.cutoffFreq << " q: " << fp.q << " fa: " << fp.fa << " boost/cut: " << fp.boostCutDB);
-        juce::Rectangle<int> filterBound = mapFPsToPositions(fp, i);
-        m_filterInterface.fcomps[i].setBounds(filterBound);
-    }
+    m_drawnPoints.resize(bounds.getWidth());
+    std::fill(m_drawnPoints.begin(), m_drawnPoints.end(), -1);
+
+    // TODO: Put in its own function
+    //for (int i = 0; i < m_filterInterface.size; ++i) {
+    //    auto& fp = m_audioProcessor.getUserFilterParams(i);
+    //    //DBG("index: " << i << " cutoff: " << fp.cutoffFreq << " q: " << fp.q << " fa: " << fp.fa << " boost/cut: " << fp.boostCutDB);
+    //    juce::Rectangle<int> filterBound = mapFPsToPositions(fp, i);
+    //    m_filterInterface.fcomps[i].setBounds(filterBound);
+    //}
     repaint();
 }
 
@@ -341,22 +350,59 @@ void EQGraphicComponent::updateResponseCurve()
     }
 }
 
-// Settings positions into AudioProcessor filter
-void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
+void EQGraphicComponent::adjustFiltersAtClickPoint(int x, int y)
 {
-    int filterIndex = m_filterInterface.inBoundsOfCircle(event.x, event.y);
+    int filterIndex = m_filterInterface.inBoundsOfCircle(x, y);
     if (filterIndex != -1) {
         auto& comp = m_filterInterface.fcomps[filterIndex];
         float w = comp.getWidth();
         float h = comp.getHeight();
-        float newX = event.x - (w / 2);
-        float newY = event.y - (h / 2);
+        float newX = x - (w / 2);
+        float newY = y - (h / 2);
         comp.setBounds(newX, newY, w, h);
 
         updateFilterParamsFromCoords(filterIndex, newX, newY);
     }
     updateChain();
     repaint();
+}
+
+void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
+{
+    static int prev_x;
+    // adjustFiltersAtClickPoint(event.x, event.y)
+    if (m_drawing) {
+        if (prev_x < event.x) {
+            m_drawnPoints[event.x] = event.y;
+            m_drawCurve.lineTo(event.x, event.y);
+        }
+        else {
+            for (int i = event.x; i < m_drawnPoints.size(); ++i) m_drawnPoints[i] = -1;
+            int startX = event.x-1;
+            for (; startX >= 0 && m_drawnPoints[startX] == -1; --startX);
+            if (startX < 0) return;
+            m_drawCurve.clear();
+            m_drawCurve.startNewSubPath(startX, m_drawnPoints[startX]);
+            for (int x = startX; x >= 0; --x) {
+                if (m_drawnPoints[x] == -1) continue;
+                m_drawCurve.lineTo(x, m_drawnPoints[x]);
+            }
+            m_drawCurve.startNewSubPath(startX, m_drawnPoints[startX]);
+        }
+    }
+    prev_x = event.x;
+    repaint();
+}
+
+void EQGraphicComponent::mouseDoubleClick(const juce::MouseEvent& event)
+{
+    m_drawing = !m_drawing;
+    if (m_drawing) {
+        std::fill(m_drawnPoints.begin(), m_drawnPoints.end(), -1);
+        m_drawCurve.clear();
+        m_drawnPoints[event.x] = event.y;
+        m_drawCurve.startNewSubPath(event.x, m_drawnPoints[event.x]);
+    }
 }
 
 std::vector<float> EQGraphicComponent::getXs(const std::vector<float>& freqs, float left, float width)

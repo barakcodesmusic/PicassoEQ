@@ -56,6 +56,7 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseDoubleClick(const juce::MouseEvent& event) override;
 
     void drawTextLabels(juce::Graphics& g);
     void drawBackgroundGrid(juce::Graphics& g);
@@ -72,8 +73,14 @@ public:
     void updateResponseCurve();
 
 private:
-    juce::Path m_responseCurve;
+
+    void adjustFiltersAtClickPoint(int x, int y);
+
     PicassoEQAudioProcessor& m_audioProcessor;
+    juce::Path m_responseCurve;
+    juce::Path m_drawCurve;
+    bool m_drawing;
+    std::vector<int> m_drawnPoints;
     FilterInterface<NUM_FILTERS, FilterCircle, MonoChain> m_filterInterface;
 };
 
