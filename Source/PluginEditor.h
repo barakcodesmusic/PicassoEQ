@@ -56,6 +56,7 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseDown(const juce::MouseEvent& event) override;
     void mouseDoubleClick(const juce::MouseEvent& event) override;
 
     void drawTextLabels(juce::Graphics& g);
@@ -75,12 +76,18 @@ public:
 private:
 
     void adjustFiltersAtClickPoint(int x, int y);
+    void resetCurveDraw(int x, int y);
+    int findPreviousValidX(int x);
+    std::pair<int, int> findNearestAxisFromLine(int ax, int ay, int bx, int by);
 
     PicassoEQAudioProcessor& m_audioProcessor;
     juce::Path m_responseCurve;
     juce::Path m_drawCurve;
     bool m_drawing;
     std::vector<int> m_drawnPoints;
+    int prevX = -1; // TODO: Clean up, should be in seperate class probably
+    int startX = -1;
+    bool drewToAxis = false; // TODO: Clean up, should be in seperate class probably
     FilterInterface<NUM_FILTERS, FilterCircle, MonoChain> m_filterInterface;
 };
 

@@ -159,7 +159,13 @@ void EQGraphicComponent::paint(juce::Graphics& g)
 
     auto bounds = getLocalBounds();
 
-    g.fillAll(Colours::black);
+    if (!m_drawing) {
+        g.fillAll(Colours::black);
+    }
+    else {
+        g.fillAll(Colours::darkgrey);
+    }
+    
 
     drawBackgroundGrid(g);
 
@@ -367,30 +373,68 @@ void EQGraphicComponent::adjustFiltersAtClickPoint(int x, int y)
     repaint();
 }
 
+int EQGraphicComponent::findPreviousValidX(int x) {
+    x--;
+    for (; x >= 0 && m_drawnPoints[x] == -1; --x);
+    return x;
+}
+
+std::pair<int, int> EQGraphicComponent::findNearestAxisFromLine(int ax, int ay, int bx, int by) {
+    float m = (float(by) - float(ay)) / (float(bx) - float(ax));
+    float b = ay - m * ax;
+    if (b > 0) return std::make_pair(0, int(b));
+    return std::make_pair(int(-b / m), 0);
+}
+
+void EQGraphicComponent::resetCurveDraw(int x, int y) {
+    startX = x;
+    prevX = -1;
+    drewToAxis = false;
+    std::fill(m_drawnPoints.begin(), m_drawnPoints.end(), -1);
+    m_drawCurve.clear();
+    m_drawnPoints[x] = y;
+    m_drawCurve.startNewSubPath(x, y);
+}
+
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
 {
-    static int prev_x;
     // adjustFiltersAtClickPoint(event.x, event.y)
+    
     if (m_drawing) {
-        if (prev_x < event.x) {
+        if (prevX < event.x) { // Drawing
+            int distanceFromStart = event.x - startX;
+            if (!drewToAxis && distanceFromStart > 10) {
+                auto axisCrossingPoint = findNearestAxisFromLine(startX, m_drawnPoints[startX], event.x, event.y);
+                m_drawnPoints[axisCrossingPoint.first] = axisCrossingPoint.second;
+                m_drawCurve.lineTo(axisCrossingPoint.first, axisCrossingPoint.second);
+                m_drawCurve.startNewSubPath(event.x, event.y);
+                drewToAxis = true;
+            }
             m_drawnPoints[event.x] = event.y;
             m_drawCurve.lineTo(event.x, event.y);
         }
-        else {
+        else if (drewToAxis) { // Erasing (can only happen after we've drawn a line to the axis)
             for (int i = event.x; i < m_drawnPoints.size(); ++i) m_drawnPoints[i] = -1;
-            int startX = event.x-1;
-            for (; startX >= 0 && m_drawnPoints[startX] == -1; --startX);
-            if (startX < 0) return;
+            int backAnX = findPreviousValidX(event.x);
+            if (backAnX < 0) return;
             m_drawCurve.clear();
-            m_drawCurve.startNewSubPath(startX, m_drawnPoints[startX]);
-            for (int x = startX; x >= 0; --x) {
+            m_drawCurve.startNewSubPath(backAnX, m_drawnPoints[backAnX]);
+            for (int x = backAnX; x >= 0; --x) {
                 if (m_drawnPoints[x] == -1) continue;
                 m_drawCurve.lineTo(x, m_drawnPoints[x]);
             }
-            m_drawCurve.startNewSubPath(startX, m_drawnPoints[startX]);
+            m_drawCurve.startNewSubPath(backAnX, m_drawnPoints[backAnX]);
         }
     }
-    prev_x = event.x;
+    prevX = event.x;
+    repaint();
+}
+
+void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
+{
+    if (m_drawing) {
+        resetCurveDraw(event.x, event.y);
+    }
     repaint();
 }
 
@@ -398,11 +442,9 @@ void EQGraphicComponent::mouseDoubleClick(const juce::MouseEvent& event)
 {
     m_drawing = !m_drawing;
     if (m_drawing) {
-        std::fill(m_drawnPoints.begin(), m_drawnPoints.end(), -1);
-        m_drawCurve.clear();
-        m_drawnPoints[event.x] = event.y;
-        m_drawCurve.startNewSubPath(event.x, m_drawnPoints[event.x]);
+        resetCurveDraw(event.x, event.y);
     }
+    repaint();
 }
 
 std::vector<float> EQGraphicComponent::getXs(const std::vector<float>& freqs, float left, float width)
