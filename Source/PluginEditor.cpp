@@ -8,6 +8,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "FilterSolver.h"
 
 #include <algorithm>
 
@@ -32,9 +33,7 @@ PicassoEQAudioProcessorEditor::~PicassoEQAudioProcessorEditor()
 //==============================================================================
 void PicassoEQAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    using namespace juce;
-
-    g.fillAll(Colours::blue);
+    g.fillAll(Colours::grey);
     g.setFont (juce::FontOptions (15.0f));
 
     auto bounds = getLocalBounds();
@@ -85,7 +84,6 @@ EQGraphicComponent::~EQGraphicComponent()
 
 void EQGraphicComponent::drawTextLabels(juce::Graphics& g)
 {
-    using namespace juce;
     g.setColour(Colours::lightgrey);
     const int fontHeight = 10;
     g.setFont(fontHeight);
@@ -105,7 +103,7 @@ void EQGraphicComponent::drawTextLabels(juce::Graphics& g)
         auto x = xs[i];
 
         bool addK = false;
-        String str;
+        juce::String str;
         if (f > 999.f)
         {
             addK = true;
@@ -119,7 +117,7 @@ void EQGraphicComponent::drawTextLabels(juce::Graphics& g)
 
         auto textWidth = g.getCurrentFont().getStringWidth(str);
 
-        Rectangle<int> r;
+        juce::Rectangle<int> r;
 
         r.setSize(textWidth, fontHeight);
         r.setCentre(x, 0);
@@ -142,12 +140,12 @@ void EQGraphicComponent::drawTextLabels(juce::Graphics& g)
 
         auto textWidth = g.getCurrentFont().getStringWidth(str);
 
-        Rectangle<int> r;
+        juce::Rectangle<int> r;
         r.setSize(textWidth, fontHeight);
         r.setX(1);
         r.setCentre(r.getCentreX(), y);
 
-        g.setColour(gDb == 0.f ? Colour(0u, 172u, 1u) : Colours::lightgrey);
+        g.setColour(gDb == 0.f ? juce::Colour(0u, 172u, 1u) : Colours::lightgrey);
 
         g.drawFittedText(str, r, juce::Justification::centredLeft, 1);
     }
@@ -176,7 +174,11 @@ void EQGraphicComponent::paint(juce::Graphics& g)
 
     g.setColour(Colours::red);
     g.strokePath(m_drawCurve, PathStrokeType(2.f));
-    //updateResponseCurve();
+
+    if (!m_drawing) {
+        updateResponseCurve();
+    }
+    
 }
 
 void EQGraphicComponent::resized() {
@@ -210,16 +212,19 @@ void EQGraphicComponent::resized() {
         return juce::Rectangle<int>{static_cast<int>(posX), static_cast<int>(posY), 25, 25};
     };
 
+    
+
     m_drawnPoints.resize(bounds.getWidth());
     std::fill(m_drawnPoints.begin(), m_drawnPoints.end(), -1);
-
+    
     // TODO: Put in its own function
-    //for (int i = 0; i < m_filterInterface.size; ++i) {
-    //    auto& fp = m_audioProcessor.getUserFilterParams(i);
-    //    //DBG("index: " << i << " cutoff: " << fp.cutoffFreq << " q: " << fp.q << " fa: " << fp.fa << " boost/cut: " << fp.boostCutDB);
-    //    juce::Rectangle<int> filterBound = mapFPsToPositions(fp, i);
-    //    m_filterInterface.fcomps[i].setBounds(filterBound);
-    //}
+    for (int i = 0; i < m_filterInterface.size; ++i) {
+        auto& fp = m_audioProcessor.getUserFilterParams(i);
+        //DBG("index: " << i << " cutoff: " << fp.cutoffFreq << " q: " << fp.q << " fa: " << fp.fa << " boost/cut: " << fp.boostCutDB);
+        juce::Rectangle<int> filterBound = mapFPsToPositions(fp, i);
+        m_filterInterface.fcomps[i].setBounds(filterBound);
+    }
+    
     repaint();
 }
 
@@ -397,9 +402,7 @@ void EQGraphicComponent::resetCurveDraw(int x, int y) {
 }
 
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
-{
-    // adjustFiltersAtClickPoint(event.x, event.y)
-    
+{   
     if (m_drawing) {
         if (prevX < event.x) { // Drawing
             int distanceFromStart = event.x - startX;
@@ -409,6 +412,7 @@ void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
                 m_drawCurve.lineTo(axisCrossingPoint.first, axisCrossingPoint.second);
                 m_drawCurve.startNewSubPath(event.x, event.y);
                 drewToAxis = true;
+                // TODO: Fill in points here from currentPos to axis
             }
             m_drawnPoints[event.x] = event.y;
             m_drawCurve.lineTo(event.x, event.y);
@@ -425,9 +429,43 @@ void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
             }
             m_drawCurve.startNewSubPath(backAnX, m_drawnPoints[backAnX]);
         }
+        prevX = event.x;
     }
-    prevX = event.x;
+    else {
+        adjustFiltersAtClickPoint(event.x, event.y);
+    }
     repaint();
+}
+
+// TODO
+std::vector<int> EQGraphicComponent::normalizedDrawnPoints(std::vector<int>& drawnPoints) {
+    std::vector<int> normalizedPoints;
+    std::copy(drawnPoints.begin(), drawnPoints.end(), std::back_inserter(normalizedPoints));
+    
+    // 1) Flip coords
+    auto bounds = getAnalysisArea();
+    for (auto& point : normalizedPoints) {
+        if (point != -1) {
+            point = bounds.getBottom() - point;
+        }
+    }
+
+    // 2) Interpolate between points
+    //auto rangeToInterp = std::make_pair(-1, normalizedPoints.size()-1);
+    //int currentIndex = normalizedPoints.size();
+    //while (currentIndex >= 0) {
+    //    if (normalizedPoints[currentIndex] == -1) {
+    //        rangeToInterp.first = currentIndex;
+    //    }
+    //    else {
+    //        if (rangeToInterp.second != -1) {
+    //            interp(rangeToInterp);
+    //        }
+    //        rangeToInterp.second = currentIndex;
+    //    }
+    //}
+
+    return normalizedPoints;
 }
 
 void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
@@ -436,6 +474,17 @@ void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
         resetCurveDraw(event.x, event.y);
     }
     repaint();
+}
+
+void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
+{
+    // TODO: Draw line from end point to axis, also fill in drawnPoints!
+    if (m_drawing) {
+        DBG("RUNNING SOLVER");
+        FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
+        fs.runSolver();
+        DBG("DONE RUNNING");
+    }
 }
 
 void EQGraphicComponent::mouseDoubleClick(const juce::MouseEvent& event)
@@ -541,10 +590,9 @@ FilterCircle::~FilterCircle()
 
 void FilterCircle::paint(juce::Graphics& g)
 {
-    using namespace juce;
     g.setColour(Colours::orange);
 
     auto bounds = getLocalBounds();
-    Rectangle<float> floatBounds(bounds.getX(), bounds.getY(), bounds.getWidth()-1, bounds.getHeight()-1);
+    juce::Rectangle<float> floatBounds(bounds.getX(), bounds.getY(), bounds.getWidth()-1, bounds.getHeight()-1);
     g.drawEllipse(floatBounds, 1.0);
 }

@@ -240,10 +240,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
 
     for (int i = 0; i < NUM_FILTERS; ++i) {
         std::string filterName{ "Filter" + std::to_string(i) };
+        float startingFreq = juce::mapToLog10(float(i + 1) / (NUM_FILTERS + 1), 20.f, 20000.f);
         layout.add(std::make_unique<juce::AudioParameterFloat>(filterName+"LowCut Freq",
             "LowCut Freq",
             juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
-            20.f));
+            startingFreq));
         layout.add(std::make_unique<juce::AudioParameterFloat>(filterName+"Q",
             "Q",
             juce::NormalisableRange<float>(0.1f, 18.f, 0.1f, 1.f),

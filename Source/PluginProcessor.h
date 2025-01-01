@@ -14,6 +14,7 @@
 
 
 constexpr int NUM_FILTERS = 4;
+constexpr std::pair<float, float> FREQ_RANGE{ 20.f, 20000.f };
 
 enum Slope
 {
@@ -41,6 +42,11 @@ struct FilterParams {
     }
     bool operator!=(const FilterParams& r) const {
         return !(*this == r);
+    }
+
+    friend std::ostream& operator<<(std::ostream& os, const FilterParams& obj) {
+        os << "Cutoff: " << obj.cutoffFreq << ", Q: " << obj.q << " Boost/Cut DB: " << obj.boostCutDB;
+        return os;
     }
 };
 

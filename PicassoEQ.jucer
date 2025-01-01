@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="WHc1UQ" name="PicassoEQ" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" headerPath="Source/*">
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" headerPath="Source/*;/Users/Barak/Desktop/MusicDev/dlib">
   <MAINGROUP id="DosSAi" name="PicassoEQ">
     <GROUP id="{525E36B7-57C6-2C47-A140-753105CA07BB}" name="dsp">
-      <FILE id="kfZFKs" name="IRRFilter.cpp" compile="1" resource="0" file="Source/dsp/IRRFilter.cpp"/>
+      <FILE id="kfZFKs" name="IRRFilter.cpp" compile="0" resource="0" file="Source/dsp/IRRFilter.cpp"/>
       <FILE id="xfRPRr" name="IRRFilter.h" compile="0" resource="0" file="Source/dsp/IRRFilter.h"/>
     </GROUP>
     <GROUP id="{A8C44CF7-E15D-C1BB-468D-57F9581F5298}" name="Source">
+      <FILE id="aXMwdA" name="FilterSolver.cpp" compile="1" resource="0"
+            file="Source/FilterSolver.cpp"/>
+      <FILE id="sZko49" name="FilterSolver.h" compile="0" resource="0" file="Source/FilterSolver.h"/>
       <FILE id="qX9AAk" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>
       <FILE id="FlNAzc" name="PluginProcessor.h" compile="0" resource="0"

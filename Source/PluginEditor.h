@@ -57,11 +57,13 @@ public:
     void resized() override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseDown(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
     void mouseDoubleClick(const juce::MouseEvent& event) override;
 
     void drawTextLabels(juce::Graphics& g);
     void drawBackgroundGrid(juce::Graphics& g);
 
+    std::vector<int> normalizedDrawnPoints(std::vector<int>& drawnPoints);
     std::vector<float> getXs(const std::vector<float>& freqs, float left, float width);
     juce::Rectangle<int> getRenderArea();
     juce::Rectangle<int> getAnalysisArea();
