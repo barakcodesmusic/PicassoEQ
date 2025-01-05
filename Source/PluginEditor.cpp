@@ -511,18 +511,22 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
     if (m_drawing) {
         
         int xBefore = findPreviousValidX(event.x);
-        auto axis = findNearestAxisFromLine(xBefore, m_drawnPoints[xBefore], event.x, event.y, true);
-        // Fill in points here from currentPos to axis
-        float xRange = axis.first - event.x;
-        float yRange = axis.second - event.y;
-        for (int i = 0; i <= xRange; ++i) {
-            if ((event.x + i) < m_drawnPoints.size()) {
-                m_drawnPoints[event.x + i] = event.y + (float(i / xRange) * yRange);
+        if (xBefore >= 0) {
+            auto axis = findNearestAxisFromLine(xBefore, m_drawnPoints[xBefore], event.x, event.y, true);
+            // Fill in points here from currentPos to axis
+            float xRange = axis.first - event.x;
+            float yRange = axis.second - event.y;
+
+            for (int i = 0; i <= xRange; ++i) {
+                if ((event.x + i) < m_drawnPoints.size()) {
+                    m_drawnPoints[event.x + i] = event.y + (float(i / xRange) * yRange);
+                }
+                else {
+                    DBG("Out of range");
+                }
             }
-            else {
-                DBG("Out of range");
-            }   
         }
+
         // Have to call this before repaint for some reason...
         //updateDrawnCurve();
         //for (int i = 0; i < m_drawnPoints.size(); ++i) {
