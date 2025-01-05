@@ -21,9 +21,9 @@ namespace fsolve {
 constexpr int NUM_PARAMS = 3 * NUM_FILTERS;
 
 struct FPSteps {
-    int freqStep = 0.001;
-    int qStep = 0.001;
-    int boostCutDBStep = 0.001;
+    float freqStep = 1;
+    float qStep = 0.1;
+    float boostCutDBStep = 0.5;
 };
 
 using Eigen::VectorXf;

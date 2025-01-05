@@ -61,6 +61,7 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& event) override;
 
     void drawTextLabels(juce::Graphics& g);
+    
     void drawBackgroundGrid(juce::Graphics& g);
 
     std::vector<int> normalizedDrawnPoints(std::vector<int>& drawnPoints);
@@ -73,14 +74,14 @@ public:
 
     void updateFilterParamsFromCoords(int filterIndex, float eq_x, float eq_y);
     void updateChain();
-    void updateResponseCurve();
 
 private:
-
+    void updateDrawnCurve();
+    void updateResponseCurve();
     void adjustFiltersAtClickPoint(int x, int y);
     void resetCurveDraw(int x, int y);
     int findPreviousValidX(int x);
-    std::pair<int, int> findNearestAxisFromLine(int ax, int ay, int bx, int by);
+    std::pair<int, int> findNearestAxisFromLine(int ax, int ay, int bx, int by, bool forward=false);
 
     PicassoEQAudioProcessor& m_audioProcessor;
     juce::Path m_responseCurve;

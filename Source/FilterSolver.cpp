@@ -33,7 +33,8 @@ float FilterSolver::solve(const VectorXf& variables) {
     float difference = 0.f;
     for (int i = 0; i < m_drawnPoints.size(); ++i) {
         float mag = 1.f;
-        float pointToFreq = juce::mapToLog10(float(i / m_drawnPoints.size()), FREQ_RANGE.first, FREQ_RANGE.second);
+        float point = i / m_drawnPoints.size();
+        float pointToFreq = juce::mapToLog10(point, FREQ_RANGE.first, FREQ_RANGE.second);
 
         mag *= m_filterChain.get<0>().coefficients->getMagnitudeForFrequency(pointToFreq, m_sampleRate);
         mag *= m_filterChain.get<1>().coefficients->getMagnitudeForFrequency(pointToFreq, m_sampleRate);
@@ -48,19 +49,19 @@ float FilterSolver::solve(const VectorXf& variables) {
 
 float FilterSolver::getGrad(const VectorXf& vars, int pos, float stepSize) {
     VectorXf perturb_forw = vars;
-    perturb_forw(pos) = vars(pos) + stepSize;
+    perturb_forw(pos) += stepSize;
 
     VectorXf perturb_back = vars;
-    perturb_back(pos) = vars(pos) - stepSize;
+    perturb_back(pos) -= stepSize;
 
-    return (solve(perturb_forw) - solve(perturb_back)) / (2 * stepSize);
+    float solveForward = solve(perturb_forw);
+    float solveBackward = solve(perturb_back);
+    float grad = (solveForward - solveBackward) / (2 * stepSize);
+    return grad;
 }
 
 float FilterSolver::operator()(const VectorXf& variables, VectorXf& grad) {
 
-    // Prepare gradient
-    VectorXf perturb_forward;
-    VectorXf perturb_backward;
     for (int fpos = 0; fpos < NUM_PARAMS; fpos += 3) {
         // freq step
         grad[fpos] += getGrad(variables, fpos, this->m_fpSteps.freqStep);

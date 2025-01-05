@@ -151,11 +151,27 @@ void EQGraphicComponent::drawTextLabels(juce::Graphics& g)
     }
 }
 
+void EQGraphicComponent::updateDrawnCurve() {
+    m_drawCurve.clear();
+    int x = 0;
+    for (; x < m_drawnPoints.size() && m_drawnPoints[x] == -1; ++x);
+    m_drawCurve.startNewSubPath(x, m_drawnPoints[x]);
+    for (; x < m_drawnPoints.size(); ++x) {
+        if (m_drawnPoints[x] == -1) continue;
+        m_drawCurve.lineTo(x, m_drawnPoints[x]);
+    }
+}
+
 void EQGraphicComponent::paint(juce::Graphics& g)
 {
     using namespace juce;
 
-    auto bounds = getLocalBounds();
+    if (m_drawing) {
+        updateDrawnCurve();
+    }
+    else {
+        updateResponseCurve();
+    }
 
     if (!m_drawing) {
         g.fillAll(Colours::black);
@@ -174,11 +190,6 @@ void EQGraphicComponent::paint(juce::Graphics& g)
 
     g.setColour(Colours::red);
     g.strokePath(m_drawCurve, PathStrokeType(2.f));
-
-    if (!m_drawing) {
-        updateResponseCurve();
-    }
-    
 }
 
 void EQGraphicComponent::resized() {
@@ -214,7 +225,7 @@ void EQGraphicComponent::resized() {
 
     
 
-    m_drawnPoints.resize(bounds.getWidth());
+    m_drawnPoints.resize(getLocalBounds().getWidth());
     std::fill(m_drawnPoints.begin(), m_drawnPoints.end(), -1);
     
     // TODO: Put in its own function
@@ -224,8 +235,6 @@ void EQGraphicComponent::resized() {
         juce::Rectangle<int> filterBound = mapFPsToPositions(fp, i);
         m_filterInterface.fcomps[i].setBounds(filterBound);
     }
-    
-    repaint();
 }
 
 void EQGraphicComponent::updateFilterParamsFromCoords(int filterIndex, float eq_x, float eq_y) {
@@ -384,11 +393,34 @@ int EQGraphicComponent::findPreviousValidX(int x) {
     return x;
 }
 
-std::pair<int, int> EQGraphicComponent::findNearestAxisFromLine(int ax, int ay, int bx, int by) {
+std::pair<int, int> EQGraphicComponent::findNearestAxisFromLine(int ax, int ay, int bx, int by, bool forward) {
     float m = (float(by) - float(ay)) / (float(bx) - float(ax));
     float b = ay - m * ax;
-    if (b > 0) return std::make_pair(0, int(b));
-    return std::make_pair(int(-b / m), 0);
+
+    if (!forward) {    
+        std::pair<int, int> axis = { 0, int(b) };
+        if (b < 0) {
+            axis = { 0, getAnalysisArea().getCentreY() }; // Default to 0db
+        }
+        else if (b >= getAnalysisArea().getBottom()) {
+            axis = { int((getAnalysisArea().getBottom() - b) / m), getAnalysisArea().getBottom() };
+        }
+        return axis;
+    }
+    else {
+        auto bounds = getAnalysisArea();
+        int ax = bounds.getX() + bounds.getWidth();
+        int ay = m * ax + b;
+        std::pair<int, int> axis = { ax, ay};
+        if (ay < 0) {
+            axis = { ax, getAnalysisArea().getCentreY() }; // Default to 0db
+        }
+        else if (ay >= getAnalysisArea().getBottom()) {
+            axis = { int((getAnalysisArea().getBottom() - b) / m), getAnalysisArea().getBottom() };
+        }
+        return axis;
+    }
+    return { -1, -1 };
 }
 
 void EQGraphicComponent::resetCurveDraw(int x, int y) {
@@ -404,34 +436,30 @@ void EQGraphicComponent::resetCurveDraw(int x, int y) {
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
 {   
     if (m_drawing) {
-        if (prevX < event.x) { // Drawing
+        // Draw view
+        if (prevX < event.x) { // Moving mouse right is drawing
             int distanceFromStart = event.x - startX;
             if (!drewToAxis && distanceFromStart > 10) {
-                auto axisCrossingPoint = findNearestAxisFromLine(startX, m_drawnPoints[startX], event.x, event.y);
-                m_drawnPoints[axisCrossingPoint.first] = axisCrossingPoint.second;
-                m_drawCurve.lineTo(axisCrossingPoint.first, axisCrossingPoint.second);
-                m_drawCurve.startNewSubPath(event.x, event.y);
+                int startY = m_drawnPoints[startX];
+                auto axis = findNearestAxisFromLine(startX, startY, event.x, event.y);
                 drewToAxis = true;
-                // TODO: Fill in points here from currentPos to axis
+                // Fill in points here from currentPos to axis
+                float xRange = event.x - axis.first;
+                float yRange = event.y - axis.second;
+                for (int i = 0; i <= xRange; ++i) {
+                    m_drawnPoints[axis.first +i] = axis.second + (float(i / xRange) * yRange);
+                }
             }
             m_drawnPoints[event.x] = event.y;
-            m_drawCurve.lineTo(event.x, event.y);
         }
         else if (drewToAxis) { // Erasing (can only happen after we've drawn a line to the axis)
+            // TODO: Play around with constant numbers for amount of iters
             for (int i = event.x; i < m_drawnPoints.size(); ++i) m_drawnPoints[i] = -1;
-            int backAnX = findPreviousValidX(event.x);
-            if (backAnX < 0) return;
-            m_drawCurve.clear();
-            m_drawCurve.startNewSubPath(backAnX, m_drawnPoints[backAnX]);
-            for (int x = backAnX; x >= 0; --x) {
-                if (m_drawnPoints[x] == -1) continue;
-                m_drawCurve.lineTo(x, m_drawnPoints[x]);
-            }
-            m_drawCurve.startNewSubPath(backAnX, m_drawnPoints[backAnX]);
         }
         prevX = event.x;
     }
     else {
+        // Filter view
         adjustFiltersAtClickPoint(event.x, event.y);
     }
     repaint();
@@ -470,6 +498,7 @@ std::vector<int> EQGraphicComponent::normalizedDrawnPoints(std::vector<int>& dra
 
 void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
 {
+    DBG("Mouse down");
     if (m_drawing) {
         resetCurveDraw(event.x, event.y);
     }
@@ -478,13 +507,33 @@ void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
 
 void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
 {
-    // TODO: Draw line from end point to axis, also fill in drawnPoints!
+    DBG("Mouse up");
     if (m_drawing) {
-        DBG("RUNNING SOLVER");
-        fsolve::FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
-        fs.runSolver();
-        DBG("DONE RUNNING");
+        
+        int xBefore = findPreviousValidX(event.x);
+        auto axis = findNearestAxisFromLine(xBefore, m_drawnPoints[xBefore], event.x, event.y, true);
+        // Fill in points here from currentPos to axis
+        float xRange = axis.first - event.x;
+        float yRange = axis.second - event.y;
+        for (int i = 0; i <= xRange; ++i) {
+            if ((event.x + i) < m_drawnPoints.size()) {
+                m_drawnPoints[event.x + i] = event.y + (float(i / xRange) * yRange);
+            }
+            else {
+                DBG("Out of range");
+            }   
+        }
+        // Have to call this before repaint for some reason...
+        //updateDrawnCurve();
+        //for (int i = 0; i < m_drawnPoints.size(); ++i) {
+        //    m_drawnPoints[i] = getAnalysisArea().getCentreY();
+        //}
+
+        // Should be done async
+        //fsolve::FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
+        //fs.runSolver();
     }
+    repaint();
 }
 
 void EQGraphicComponent::mouseDoubleClick(const juce::MouseEvent& event)
