@@ -481,7 +481,7 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
     // TODO: Draw line from end point to axis, also fill in drawnPoints!
     if (m_drawing) {
         DBG("RUNNING SOLVER");
-        FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
+        fsolve::FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
         fs.runSolver();
         DBG("DONE RUNNING");
     }

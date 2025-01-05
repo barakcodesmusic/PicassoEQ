@@ -20,11 +20,26 @@ CPMAddPackage(
     SOURCE_DIR ${LIB_DIR}/juce
 )
 
+# CPMAddPackage(
+#     NAME dlib
+#     GITHUB_REPOSITORY davisking/dlib
+#     VERSION 19.24.6
+#     SOURCE_DIR ${LIB_DIR}/dlib
+# )
+
 CPMAddPackage(
-    NAME dlib
-    GITHUB_REPOSITORY davisking/dlib
-    VERSION 19.24.6
-    SOURCE_DIR ${LIB_DIR}/dlib
+    NAME eigen
+    GIT_REPOSITORY https://gitlab.com/libeigen/eigen
+    GIT_TAG 3.4
+    VERSION 3.4
+    SOURCE_DIR ${LIB_DIR}/eigen
+)
+
+CPMAddPackage(
+    NAME lbfgspp
+    GITHUB_REPOSITORY yixuan/LBFGSpp
+    VERSION 0.3.0
+    SOURCE_DIR ${LIB_DIR}/lbfgspp
 )
 
 # CPMAddPackage(

@@ -9,26 +9,31 @@
 */
 
 #include "FilterSolver.h"
-#include <iostream>
 
-FilterSolver::FilterSolver(std::vector<int> drawnPoints, double sampleRate) :
+#include <iostream>
+#include <LBFGSB.h>
+
+namespace fsolve {
+
+using namespace LBFGSpp;
+
+FilterSolver::FilterSolver(std::vector<int> drawnPoints, float sampleRate) :
     m_drawnPoints(drawnPoints),
     m_sampleRate(sampleRate)
 {
 }
 FilterSolver::~FilterSolver() {}
 
-double FilterSolver::solve(const dlib::matrix<double, 3 * NUM_FILTERS, 1>& variables) {
-
-    double difference = 0.f;
+float FilterSolver::solve(const VectorXf& variables) {
 
     updateCoefficientsBulk(variables);
 
     // Go through each drawn point, convert it to a frequency, get the filter response
     // and compare to expected response
+    float difference = 0.f;
     for (int i = 0; i < m_drawnPoints.size(); ++i) {
-        double mag = 1.f;
-        double pointToFreq = juce::mapToLog10(float(i / m_drawnPoints.size()), FREQ_RANGE.first, FREQ_RANGE.second);
+        float mag = 1.f;
+        float pointToFreq = juce::mapToLog10(float(i / m_drawnPoints.size()), FREQ_RANGE.first, FREQ_RANGE.second);
 
         mag *= m_filterChain.get<0>().coefficients->getMagnitudeForFrequency(pointToFreq, m_sampleRate);
         mag *= m_filterChain.get<1>().coefficients->getMagnitudeForFrequency(pointToFreq, m_sampleRate);
@@ -41,7 +46,36 @@ double FilterSolver::solve(const dlib::matrix<double, 3 * NUM_FILTERS, 1>& varia
     return difference;
 }
 
-void FilterSolver::updateCoefficientsBulk(const dlib::matrix<double, 3*NUM_FILTERS, 1>& variables) {
+float FilterSolver::getGrad(const VectorXf& vars, int pos, float stepSize) {
+    VectorXf perturb_forw = vars;
+    perturb_forw(pos) = vars(pos) + stepSize;
+
+    VectorXf perturb_back = vars;
+    perturb_back(pos) = vars(pos) - stepSize;
+
+    return (solve(perturb_forw) - solve(perturb_back)) / (2 * stepSize);
+}
+
+float FilterSolver::operator()(const VectorXf& variables, VectorXf& grad) {
+
+    // Prepare gradient
+    VectorXf perturb_forward;
+    VectorXf perturb_backward;
+    for (int fpos = 0; fpos < NUM_PARAMS; fpos += 3) {
+        // freq step
+        grad[fpos] += getGrad(variables, fpos, this->m_fpSteps.freqStep);
+        // q step
+        grad[fpos + 1] = getGrad(variables, fpos + 1, this->m_fpSteps.qStep);
+        // gain step
+        grad[fpos + 2] = getGrad(variables, fpos + 2, this->m_fpSteps.boostCutDBStep);
+    }
+    // TODO: Update grad steps (for Q especially)
+    //this->m_fpSteps.updateSteps(vars(i), vars(i + 1), vars(i + 2));
+
+    return solve(variables);
+}
+
+void FilterSolver::updateCoefficientsBulk(const VectorXf& variables) {
     const FilterParams fp0{ variables(0) , variables(1) , variables(2) };
     auto peak0Coefficients = makePeakFilter(fp0, m_sampleRate);
     updateCoefficients(m_filterChain.get<0>().coefficients, peak0Coefficients);
@@ -61,34 +95,51 @@ void FilterSolver::updateCoefficientsBulk(const dlib::matrix<double, 3*NUM_FILTE
 
 void FilterSolver::runSolver()
 {
-    // Initialize matrix
-    dlib::matrix<double, 3*NUM_FILTERS, 1> variables;
-    for (int fpos = 0; fpos < NUM_FILTERS; ++fpos) {
-        float startingFreq = juce::mapToLog10(float(fpos + 1) / (NUM_FILTERS + 1), 20.f, 20000.f);
-        variables(3 * fpos) = startingFreq; // Frequency guess
-        variables(3 * fpos + 1) = 10.f; // Q guess
-        variables(3 * fpos + 2) = 0.f; // Boost/Cut DB guess
+    // Create starting vector
+    VectorXf variables(NUM_PARAMS);
+    variables.setZero();
+    for (int fpos = 0; fpos < NUM_PARAMS; fpos+=3) {
+        int filter = fpos / 3;
+        float startingFreq = juce::mapToLog10(float(filter + 1) / (NUM_FILTERS + 1), 20.f, 20000.f);
+        variables(fpos) = startingFreq; // Frequency guess
+        variables(fpos + 1) = 1.f; // Q guess
+        variables(fpos + 2) = 0.f; // Boost/Cut DB guess
     }
 
     updateCoefficientsBulk(variables);
 
-    auto objectiveFunction = [this](const dlib::matrix<double, 3 * NUM_FILTERS, 1>& vars) {
-        return this->solve(vars);
-    };
+    // Set up parameters
+    LBFGSBParam<float> param;
+    param.epsilon = 1e-6;
+    param.max_iterations = 10;
 
-    dlib::find_min_using_approximate_derivatives(
-        dlib::bfgs_search_strategy(),
-        dlib::objective_delta_stop_strategy(1e-3), // Play with this
-        objectiveFunction, // Callable
-        variables,
-        -1, // Minimize
-        5
-    );
+    // Create solver and function object
+    LBFGSBSolver<float> solver(param);
+
+    VectorXf lb = VectorXf::Constant(NUM_PARAMS, 0.0f);
+    VectorXf ub = VectorXf::Constant(NUM_PARAMS, 0.0f);
+    // Set bounds for fcs
+    for (int i = 0; i < NUM_FILTERS; i++)
+    {
+        int fpos = 3 * i;
+        lb[fpos] = FREQ_RANGE.first;
+        lb[fpos+1] = Q_RANGE.first;
+        lb[fpos+2] = GAIN_RANGE.first;
+        ub[fpos] = FREQ_RANGE.second;
+        ub[fpos + 1] = Q_RANGE.second;
+        ub[fpos + 2] = GAIN_RANGE.second;
+    }
+
+    // x will be overwritten to be the best point found
+    float fx;
+    int niter = solver.minimize(*this, variables, fx, lb, ub);
 
     for (int fpos = 0; fpos < NUM_FILTERS; ++fpos) {
-        const FilterParams fp{ variables(3* fpos) , variables(3* fpos +1) , variables(3* fpos +2) };
+        const FilterParams fp{ variables(3 * fpos) , variables(3 * fpos + 1) , variables(3 * fpos + 2) };
         std::ostringstream oss;
         oss << fp;
         DBG("FilterParams: " << oss.str());
     }
+}
+
 }

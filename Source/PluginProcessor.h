@@ -15,6 +15,8 @@
 
 constexpr int NUM_FILTERS = 4;
 constexpr std::pair<float, float> FREQ_RANGE{ 20.f, 20000.f };
+constexpr std::pair<float, float> Q_RANGE{ 0.1f, 18.f };
+constexpr std::pair<float, float> GAIN_RANGE{ -24.f, 24.f };
 
 enum Slope
 {
