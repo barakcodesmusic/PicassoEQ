@@ -54,6 +54,7 @@ public:
     EQGraphicComponent(PicassoEQAudioProcessor& ap);
     ~EQGraphicComponent();
     void paint(juce::Graphics& g) override;
+    void setFilterAnchorPositions();
     void resized() override;
     void mouseDrag(const juce::MouseEvent& event) override;
     void mouseDown(const juce::MouseEvent& event) override;
@@ -64,7 +65,7 @@ public:
     
     void drawBackgroundGrid(juce::Graphics& g);
 
-    std::vector<int> normalizedDrawnPoints(std::vector<int>& drawnPoints);
+    std::vector<float> normalizedDrawnPoints(std::vector<int>& drawnPoints);
     std::vector<float> getXs(const std::vector<float>& freqs, float left, float width);
     juce::Rectangle<int> getRenderArea();
     juce::Rectangle<int> getAnalysisArea();

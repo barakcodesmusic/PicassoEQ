@@ -21,27 +21,29 @@ namespace fsolve {
 constexpr int NUM_PARAMS = 3 * NUM_FILTERS;
 
 struct FPSteps {
-    float freqStep = 1;
-    float qStep = 0.1;
-    float boostCutDBStep = 0.5;
+    float freqStep = 0.001f;
+    float qStep = 0.001f;
+    float boostCutDBStep = 0.001f;
 };
 
 using Eigen::VectorXf;
 
 class FilterSolver {
 public:
-    FilterSolver(std::vector<int> drawnPoints, float sampleRate);
+    FilterSolver(std::vector<float> drawnPoints, float sampleRate);
     ~FilterSolver();
 
-    void runSolver();
+    std::vector<FilterParams> runSolver();
     float operator()(const VectorXf& variables, VectorXf& grad);
+
+    int iterationCount{ 0 };
 
 private:
     void updateCoefficientsBulk(const VectorXf& variables);
     float getGrad(const VectorXf& vars, int pos, float stepSize);
     float solve(const VectorXf& variables);
 
-    std::vector<int> m_drawnPoints;
+    std::vector<float> m_drawnDecibels;
     float m_sampleRate;
     juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter> m_filterChain; // TODO: Hardcoded to 4 for now
     FPSteps m_fpSteps;

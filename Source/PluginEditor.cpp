@@ -166,17 +166,12 @@ void EQGraphicComponent::paint(juce::Graphics& g)
 {
     using namespace juce;
 
-    if (m_drawing) {
-        updateDrawnCurve();
-    }
-    else {
-        updateResponseCurve();
-    }
-
     if (!m_drawing) {
         g.fillAll(Colours::black);
+        updateResponseCurve();
     }
     else {
+        updateDrawnCurve();
         g.fillAll(Colours::darkgrey);
     }
     
@@ -192,42 +187,42 @@ void EQGraphicComponent::paint(juce::Graphics& g)
     g.strokePath(m_drawCurve, PathStrokeType(2.f));
 }
 
-void EQGraphicComponent::resized() {
+void EQGraphicComponent::setFilterAnchorPositions() {
     auto bounds = getAnalysisArea();
 
-    auto mapFPsToPositions = [&bounds](const auto& fp, int i){
+    auto mapFPsToPositions = [&bounds](const auto& fp, int i) {
 
         //DBG(width << " " << top << " " << bottom << " " << centerY);
 
         float midPointY = bounds.getCentreY();
         float bottom = bounds.getBottom();
         float top = bounds.getY();
-        
+
         float posX = bounds.getX() + bounds.getWidth() * juce::mapFromLog10(fp.cutoffFreq, 20.f, 20000.f);
         float posY = 0.0;
-        if (i == 1 || i == 2) { // PEAK FILTERS, TODO: Make more generic
+        //if (i == 1 || i == 2) { // PEAK FILTERS, TODO: Make more generic
             // TODO: Figure out how to calculate q?
-            posY = juce::jmap(fp.boostCutDB, -24.f, 24.f, bottom, top);
-        }
-        else {
-            if (fp.q > 1) { // TODO: Not accurate midpoint?
-                posY = juce::jmap(fp.q, 1.f, 18.f, midPointY, top); // 1 -> 18
-            }
-            else {
-                posY = juce::jmap(fp.q, 0.1f, 1.f, bottom, midPointY); // .1 -> 1
-            }
-        }
-        
-        //DBG("Posx: " << posX << " Posy: " << posY << " width: " << bounds.getWidth() << " height: " << bounds.getHeight() << " top: " << bounds.getY() << " bottom " << bounds.getBottom());
-        
-        return juce::Rectangle<int>{static_cast<int>(posX), static_cast<int>(posY), 25, 25};
-    };
+        posY = juce::jmap(fp.boostCutDB, GAIN_RANGE.first, GAIN_RANGE.second, bottom, top);
+        //}
+        //else { // FOR CUTOFF filters
+        //    if (fp.q > 1) { // TODO: Not accurate midpoint?
+        //        posY = juce::jmap(fp.q, 1.f, 18.f, midPointY, top); // 1 -> 18
+        //    }
+        //    else {
+        //        posY = juce::jmap(fp.q, 0.1f, 1.f, bottom, midPointY); // .1 -> 1
+        //    }
+        //}
 
-    
+        //DBG("Posx: " << posX << " Posy: " << posY << " width: " << bounds.getWidth() << " height: " << bounds.getHeight() << " top: " << bounds.getY() << " bottom " << bounds.getBottom());
+
+        return juce::Rectangle<int>{static_cast<int>(posX), static_cast<int>(posY), 25, 25};
+        };
+
+
 
     m_drawnPoints.resize(getLocalBounds().getWidth());
     std::fill(m_drawnPoints.begin(), m_drawnPoints.end(), -1);
-    
+
     // TODO: Put in its own function
     for (int i = 0; i < m_filterInterface.size; ++i) {
         auto& fp = m_audioProcessor.getUserFilterParams(i);
@@ -235,6 +230,12 @@ void EQGraphicComponent::resized() {
         juce::Rectangle<int> filterBound = mapFPsToPositions(fp, i);
         m_filterInterface.fcomps[i].setBounds(filterBound);
     }
+
+    updateChain();
+}
+
+void EQGraphicComponent::resized() {
+    setFilterAnchorPositions();
 }
 
 void EQGraphicComponent::updateFilterParamsFromCoords(int filterIndex, float eq_x, float eq_y) {
@@ -275,16 +276,21 @@ void EQGraphicComponent::updateFilterParamsFromCoords(int filterIndex, float eq_
 
 void EQGraphicComponent::updateChain()
 {
-    auto filterParamsLowCut = m_audioProcessor.getUserFilterParams(0);
+    //auto filterParamsLowCut = m_audioProcessor.getUserFilterParams(0);
+    auto filterParamsPeak0 = m_audioProcessor.getUserFilterParams(0);
     auto filterParamsPeak1 = m_audioProcessor.getUserFilterParams(1);
     auto filterParamsPeak2 = m_audioProcessor.getUserFilterParams(2);
-    auto filterParamsHiCut = m_audioProcessor.getUserFilterParams(3);
+    auto filterParamsPeak3 = m_audioProcessor.getUserFilterParams(3);
+    //auto filterParamsHiCut = m_audioProcessor.getUserFilterParams(3);
 
     //monoChain.setBypassed<ChainPositions::LowCut>(chainSettings.lowCutBypassed);
     //monoChain.setBypassed<ChainPositions::Peak>(chainSettings.peakBypassed);
     //monoChain.setBypassed<ChainPositions::HighCut>(chainSettings.highCutBypassed);
 
-    auto lowCutCoefficients = makeLowCutFilter(filterParamsLowCut, m_audioProcessor.getSampleRate());
+    //auto lowCutCoefficients = makeLowCutFilter(filterParamsLowCut, m_audioProcessor.getSampleRate());
+
+    auto peak0Coefficients = makePeakFilter(filterParamsPeak0, m_audioProcessor.getSampleRate());
+    updateCoefficients(m_filterInterface.fchain.get<0>().coefficients, peak0Coefficients);
 
     auto peak1Coefficients = makePeakFilter(filterParamsPeak1, m_audioProcessor.getSampleRate());
     updateCoefficients(m_filterInterface.fchain.get<ChainPositions::Peak1>().coefficients, peak1Coefficients);
@@ -292,15 +298,18 @@ void EQGraphicComponent::updateChain()
     auto peak2Coefficients = makePeakFilter(filterParamsPeak2, m_audioProcessor.getSampleRate());
     updateCoefficients(m_filterInterface.fchain.get<ChainPositions::Peak2>().coefficients, peak2Coefficients);
 
-    auto highCutCoefficients = makeHighCutFilter(filterParamsHiCut, m_audioProcessor.getSampleRate());
+    auto peak3Coefficients = makePeakFilter(filterParamsPeak3, m_audioProcessor.getSampleRate());
+    updateCoefficients(m_filterInterface.fchain.get<3>().coefficients, peak3Coefficients);
 
-    updateCutFilter(m_filterInterface.fchain.get<ChainPositions::LowCut>(),
-        lowCutCoefficients,
-        SLOPE);
+    //auto highCutCoefficients = makeHighCutFilter(filterParamsHiCut, m_audioProcessor.getSampleRate());
 
-    updateCutFilter(m_filterInterface.fchain.get<ChainPositions::HighCut>(),
-        highCutCoefficients,
-        SLOPE);
+    //updateCutFilter(m_filterInterface.fchain.get<ChainPositions::LowCut>(),
+    //    lowCutCoefficients,
+    //    SLOPE);
+
+    //updateCutFilter(m_filterInterface.fchain.get<ChainPositions::HighCut>(),
+    //    highCutCoefficients,
+    //    SLOPE);
 }
 
 void EQGraphicComponent::updateResponseCurve()
@@ -310,10 +319,12 @@ void EQGraphicComponent::updateResponseCurve()
 
     auto w = responseArea.getWidth();
 
-    auto& lowcut = m_filterInterface.fchain.get<ChainPositions::LowCut>();
+    //auto& lowcut = m_filterInterface.fchain.get<ChainPositions::LowCut>();
+    auto& peak0 = m_filterInterface.fchain.get<0>();
     auto& peak1 = m_filterInterface.fchain.get<ChainPositions::Peak1>();
     auto& peak2 = m_filterInterface.fchain.get<ChainPositions::Peak2>();
-    auto& highcut = m_filterInterface.fchain.get<ChainPositions::HighCut>();
+    auto& peak3 = m_filterInterface.fchain.get<3>();
+    //auto& highcut = m_filterInterface.fchain.get<ChainPositions::HighCut>();
 
     auto sampleRate = m_audioProcessor.getSampleRate();
 
@@ -326,31 +337,33 @@ void EQGraphicComponent::updateResponseCurve()
         auto freq = mapToLog10(double(i) / double(w), 20.0, 20000.0);
 
         //if (!monoChain.isBypassed<ChainPositions::Peak>())
+            mag *= peak0.coefficients->getMagnitudeForFrequency(freq, sampleRate);
             mag *= peak1.coefficients->getMagnitudeForFrequency(freq, sampleRate);
             mag *= peak2.coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            mag *= peak3.coefficients->getMagnitudeForFrequency(freq, sampleRate);
 
         //if (!monoChain.isBypassed<ChainPositions::LowCut>())
         //{
-            if (!lowcut.isBypassed<0>())
-                mag *= lowcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if (!lowcut.isBypassed<1>())
-                mag *= lowcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if (!lowcut.isBypassed<2>())
-                mag *= lowcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if (!lowcut.isBypassed<3>())
-                mag *= lowcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            //if (!lowcut.isBypassed<0>())
+            //    mag *= lowcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            //if (!lowcut.isBypassed<1>())
+            //    mag *= lowcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            //if (!lowcut.isBypassed<2>())
+            //    mag *= lowcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            //if (!lowcut.isBypassed<3>())
+            //    mag *= lowcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
         //}
 
         //if (!monoChain.isBypassed<ChainPositions::HighCut>())
         //{
-            if (!highcut.isBypassed<0>())
-                mag *= highcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if (!highcut.isBypassed<1>())
-                mag *= highcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if (!highcut.isBypassed<2>())
-                mag *= highcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
-            if (!highcut.isBypassed<3>())
-                mag *= highcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            //if (!highcut.isBypassed<0>())
+            //    mag *= highcut.get<0>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            //if (!highcut.isBypassed<1>())
+            //    mag *= highcut.get<1>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            //if (!highcut.isBypassed<2>())
+            //    mag *= highcut.get<2>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
+            //if (!highcut.isBypassed<3>())
+            //    mag *= highcut.get<3>().coefficients->getMagnitudeForFrequency(freq, sampleRate);
         //}
 
         mags[i] = Decibels::gainToDecibels(mag);
@@ -466,33 +479,32 @@ void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
 }
 
 // TODO
-std::vector<int> EQGraphicComponent::normalizedDrawnPoints(std::vector<int>& drawnPoints) {
-    std::vector<int> normalizedPoints;
+std::vector<float> EQGraphicComponent::normalizedDrawnPoints(std::vector<int>& drawnPoints) {
+    std::vector<float> normalizedPoints;
     std::copy(drawnPoints.begin(), drawnPoints.end(), std::back_inserter(normalizedPoints));
     
     // 1) Flip coords
     auto bounds = getAnalysisArea();
+    float prevNonNeg = -1;
     for (auto& point : normalizedPoints) {
         if (point != -1) {
-            point = bounds.getBottom() - point;
+            prevNonNeg = point;
+        }
+        else {
+            point = prevNonNeg;
         }
     }
+    auto it = std::find_if(normalizedPoints.begin(), normalizedPoints.end(), [](float num) {return num != -1;});
+    auto firstNonNeg = *it;
+    std::fill(normalizedPoints.begin(), it, firstNonNeg);
 
-    // 2) Interpolate between points
-    //auto rangeToInterp = std::make_pair(-1, normalizedPoints.size()-1);
-    //int currentIndex = normalizedPoints.size();
-    //while (currentIndex >= 0) {
-    //    if (normalizedPoints[currentIndex] == -1) {
-    //        rangeToInterp.first = currentIndex;
-    //    }
-    //    else {
-    //        if (rangeToInterp.second != -1) {
-    //            interp(rangeToInterp);
-    //        }
-    //        rangeToInterp.second = currentIndex;
-    //    }
-    //}
+    // 2) TODO: Interpolate between points
 
+    // 3) Map to DB
+    for (auto& p : normalizedPoints) {
+        p = juce::jmap(p, static_cast<float>(bounds.getBottom()), static_cast<float>(bounds.getY()), GAIN_RANGE.first, GAIN_RANGE.second);
+    }
+    
     return normalizedPoints;
 }
 
@@ -527,15 +539,26 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
             }
         }
 
-        // Have to call this before repaint for some reason...
-        //updateDrawnCurve();
-        //for (int i = 0; i < m_drawnPoints.size(); ++i) {
-        //    m_drawnPoints[i] = getAnalysisArea().getCentreY();
-        //}
-
         // Should be done async
-        //fsolve::FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
-        //fs.runSolver();
+        fsolve::FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
+        std::vector<FilterParams> fps = fs.runSolver();
+
+        // Update Audio Processor
+        for (int filterIndex = 0; filterIndex < NUM_FILTERS; ++filterIndex) {
+            std::string filterID{ "Filter" + std::to_string(filterIndex) };
+            const auto& fp = fps[filterIndex];
+
+            float newCutoff = juce::jmap(fp.cutoffFreq, FREQ_RANGE.first, FREQ_RANGE.second, 0.f, 1.f);
+            float newQ = juce::jmap(fp.q, Q_RANGE.first, Q_RANGE.second, 0.f, 1.f);
+            float newGain = juce::jmap(fp.boostCutDB, GAIN_RANGE.first, GAIN_RANGE.second, 0.f, 1.f);
+            m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(newCutoff);
+            m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(newQ);
+            m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(newGain);
+        }
+
+        setFilterAnchorPositions();
+
+        m_drawing = false;
     }
     repaint();
 }

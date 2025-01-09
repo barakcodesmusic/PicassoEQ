@@ -288,51 +288,62 @@ Coefficients makePeakFilter(const FilterParams& filterParams, double sampleRate)
 
 void PicassoEQAudioProcessor::updateLowCutFilters(const FilterParams& filterParams)
 {
-    auto cutCoefficients = makeLowCutFilter(filterParams, getSampleRate());
-    auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
-    auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
+    //auto cutCoefficients = makeLowCutFilter(filterParams, getSampleRate());
+    //auto& leftLowCut = leftChain.get<ChainPositions::LowCut>();
+    //auto& rightLowCut = rightChain.get<ChainPositions::LowCut>();
 
     //leftChain.setBypassed<ChainPositions::LowCut>(filterParams.lowCutBypassed);
     //rightChain.setBypassed<ChainPositions::LowCut>(filterParams.lowCutBypassed);
 
-    updateCutFilter(rightLowCut, cutCoefficients, SLOPE);
-    updateCutFilter(leftLowCut, cutCoefficients, SLOPE);
+    //updateCutFilter(rightLowCut, cutCoefficients, SLOPE);
+    //updateCutFilter(leftLowCut, cutCoefficients, SLOPE);
 }
 
 void PicassoEQAudioProcessor::updateHighCutFilters(const FilterParams& filterParams)
 {
-    auto highCutCoefficients = makeHighCutFilter(filterParams, getSampleRate());
+    //auto highCutCoefficients = makeHighCutFilter(filterParams, getSampleRate());
 
-    auto& leftHighCut = leftChain.get<ChainPositions::HighCut>();
-    auto& rightHighCut = rightChain.get<ChainPositions::HighCut>();
+    //auto& leftHighCut = leftChain.get<ChainPositions::HighCut>();
+    //auto& rightHighCut = rightChain.get<ChainPositions::HighCut>();
 
     //leftChain.setBypassed<ChainPositions::HighCut>(filterParams.highCutBypassed);
     //rightChain.setBypassed<ChainPositions::HighCut>(filterParams.highCutBypassed);
 
-    updateCutFilter(leftHighCut, highCutCoefficients, SLOPE);
-    updateCutFilter(rightHighCut, highCutCoefficients, SLOPE);
+    //updateCutFilter(leftHighCut, highCutCoefficients, SLOPE);
+    //updateCutFilter(rightHighCut, highCutCoefficients, SLOPE);
 }
 
 void PicassoEQAudioProcessor::updateFilters()
 {
-    for (int i = 0; i < NUM_FILTERS; ++i) { // TODO: More easily scalable design (NUM_FILTERS???)
-        auto filterParams = getUserFilterParams(i);
+    auto fp0 = getUserFilterParams(0);
+    updatePeakFilter<ChainPositions::LowCut>(fp0);
 
-        if (i == 0) {
-            updateLowCutFilters(filterParams);
-        }
-        else if (i == NUM_FILTERS - 1) {
-            updateHighCutFilters(filterParams);
-        }
-        else { // TODO: Fix... so bad
-            if (i == 1) {
-                updatePeakFilter<ChainPositions::Peak1>(filterParams);
-            }
-            else if (i == 2) {
-                updatePeakFilter<ChainPositions::Peak2>(filterParams);
-            }
-        } 
-    }
+    auto fp1 = getUserFilterParams(1);
+    updatePeakFilter<ChainPositions::Peak1>(fp1);
+
+    auto fp2 = getUserFilterParams(2);
+    updatePeakFilter<ChainPositions::Peak2>(fp2);
+
+    auto fp3 = getUserFilterParams(3);
+    updatePeakFilter<ChainPositions::HighCut>(fp3);
+    //for (int i = 0; i < NUM_FILTERS; ++i) { // TODO: More easily scalable design (NUM_FILTERS???)
+    //    auto filterParams = getUserFilterParams(i);
+
+    //    if (i == 0) {
+    //        updateLowCutFilters(filterParams);
+    //    }
+    //    else if (i == NUM_FILTERS - 1) {
+    //        updateHighCutFilters(filterParams);
+    //    }
+    //    else { // TODO: Fix... so bad
+    //        if (i == 1) {
+    //            updatePeakFilter<ChainPositions::Peak1>(filterParams);
+    //        }
+    //        else if (i == 2) {
+    //            updatePeakFilter<ChainPositions::Peak2>(filterParams);
+    //        }
+    //    } 
+    //}
 }
 
 //==============================================================================
