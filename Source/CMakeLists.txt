@@ -107,6 +107,7 @@ target_link_libraries(PicassoEQ
         # AudioPluginData           # If we'd created a binary data target, we'd link to it here
         juce::juce_audio_utils
         juce::juce_dsp
+        juce::juce_graphics
         eigen
         lbfgspp
     PUBLIC

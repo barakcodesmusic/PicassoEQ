@@ -12,6 +12,98 @@
 
 #include <algorithm>
 
+namespace utils {
+
+EQPoint findNearestAxisPointRightFromLine(const juce::Rectangle<int>& bounds, const EQPoint& lineStart, const EQPoint& lineEnd) {
+    float m = float(lineEnd.getY() - lineStart.getY()) / float(lineEnd.getX() - lineStart.getX());
+    float b = lineStart.getY() - m * lineStart.getX();
+
+    int axisX = bounds.getX() + bounds.getWidth();
+    int axisY = int(m * axisX + b);
+    if (axisY < 0) { // Cross y-axis above screen
+        axisY = bounds.getCentreY(); // Default to 0db
+    }
+    else if (axisY >= bounds.getBottom()) { // Cross y-axis below screen
+        axisX = int((bounds.getBottom() - b) / m);
+        axisY = bounds.getBottom();
+    }
+    return { axisX, axisY };
+}
+
+EQPoint findNearestAxisPointLeftFromLine(const juce::Rectangle<int>& bounds, const EQPoint& lineStart, const EQPoint& lineEnd) {
+    float m = float(lineEnd.getY() - lineStart.getY()) / float(lineEnd.getX() - lineStart.getX());
+    float b = lineStart.getY() - m * lineStart.getX();
+
+    EQPoint axis = {
+        0,
+        int(b)
+    };
+    if (b < 0) { // Cross y-axis above screen
+        axis.setY(bounds.getCentreY()); // Default to 0db
+    }
+    else if (b >= bounds.getBottom()) { // Cross y-axis below screen
+        axis = { int((bounds.getBottom() - b) / m), bounds.getBottom() };
+    }
+    return axis;
+}
+
+std::vector<float> normalizedDrawnPoints(const juce::Rectangle<int>& bounds, std::vector<int>& drawnPoints, std::pair<int, int> normalizeRange) {
+    std::vector<float> normalizedPoints;
+    std::copy(drawnPoints.begin(), drawnPoints.end(), std::back_inserter(normalizedPoints));
+
+    // 1) Flip coords
+    float prevNonNeg = -1;
+    for (auto& point : normalizedPoints) {
+        if (point != -1) {
+            prevNonNeg = point;
+        }
+        else {
+            point = prevNonNeg;
+        }
+    }
+    auto it = std::find_if(normalizedPoints.begin(), normalizedPoints.end(), [](float num) {return num != -1;});
+    auto firstNonNeg = *it;
+    std::fill(normalizedPoints.begin(), it, firstNonNeg);
+
+    // 2) Map to DB
+    for (auto& p : normalizedPoints) {
+        p = juce::jmap(p, static_cast<float>(bounds.getBottom()), static_cast<float>(bounds.getY()), GAIN_RANGE.first, GAIN_RANGE.second);
+    }
+
+    // TODO: Clean up eventually
+    for (int i = 0; i < normalizeRange.first; ++i) {
+        normalizedPoints[i] = 0; // NOTE: Assumes gain range symmetrical
+    }
+    for (int i = normalizeRange.second; i < normalizedPoints.size(); ++i) {
+        normalizedPoints[i] = 0;
+    }
+
+    return normalizedPoints;
+}
+
+EQPoint findPreviousValidPoint(const EQPoint& startPos, const std::vector<int>& vals) {
+    int x = startPos.getX() - 20; // Get a good distance
+    for (; x >= 0 && (vals[x] == -1); --x);
+    if (x == -1) return { -1, -1 };
+    return { x, vals[x] };
+}
+
+void linearInterpolatePointToPoint(std::vector<int>& vals, const EQPoint& start, const EQPoint& end) {
+
+    jassert(end.getX() < vals.size());
+    jassert(end.getX() >= start.getX());
+
+    float xRange = end.getX() - start.x;
+    float yRange = end.getY() - start.y;
+
+    for (int i = 0; i <= xRange; ++i) {
+        // Asserts protect this array access
+        vals[start.x + i] = start.y + (i / xRange * yRange);
+    }
+}
+
+}
+
 //==============================================================================
 PicassoEQAudioProcessorEditor::PicassoEQAudioProcessorEditor (PicassoEQAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), 
@@ -215,7 +307,7 @@ void EQGraphicComponent::setFilterAnchorPositions() {
 
         //DBG("Posx: " << posX << " Posy: " << posY << " width: " << bounds.getWidth() << " height: " << bounds.getHeight() << " top: " << bounds.getY() << " bottom " << bounds.getBottom());
 
-        return juce::Rectangle<int>{static_cast<int>(posX), static_cast<int>(posY), 25, 25};
+        return juce::Rectangle<int>{static_cast<int>(posX), static_cast<int>(posY), 30, 30};
         };
 
 
@@ -238,40 +330,34 @@ void EQGraphicComponent::resized() {
     setFilterAnchorPositions();
 }
 
-void EQGraphicComponent::updateFilterParamsFromCoords(int filterIndex, float eq_x, float eq_y) {
-    // TODO: Make this more generic. For peak filters need to pass down gain
+void EQGraphicComponent::updateFilterParamsFromCoords(int filterIndex, const EQPoint& filterPos) {
     auto bounds = getAnalysisArea();
 
-    float height = bounds.getHeight();
-    float width = bounds.getWidth();
-    float top = bounds.getY();
-    float bottom = bounds.getBottom();
+    float logMapFrequency = juce::mapToLog10(
+        float(filterPos.getX()) / bounds.getWidth(),
+        FREQ_RANGE.first, FREQ_RANGE.second);
+    float cutoffFreq = juce::jmap(logMapFrequency, FREQ_RANGE.first, FREQ_RANGE.second, 0.f, 1.f);
+    float boostCutDB = juce::jmap(
+        float(filterPos.getY()),
+        float(bounds.getBottom()),
+        float(bounds.getY()),
+        0.f,
+        1.f);
+    float q = 1.f / 18.f;
 
-    float cutoffFreq = juce::mapToLog10(eq_x/width, 20.f/20000.f, 1.f);
-    float boostCutDB = juce::jmap(eq_y, bottom, top, 0.f, 1.f);
+    DBG("Cutoff Freq: " << cutoffFreq);
+    
+    //if (filterPos.getY() < bounds.getCentreY()) { // In upper half
+    //    q = juce::jmap(filterPos.getY(), bounds.getCentreY(), bounds.getY(), 10, 180); // 1 -> 18
+    //}
+    //else {
+    //    q = juce::jmap(filterPos.getX(), bounds.getBottom(), bounds.getCentreY(), 1, 10); // .1 -> 1
+    //}
 
-    auto& fp = m_audioProcessor.getUserFilterParams(filterIndex);
-
-    float q = 0.0;
-    float center = (top + bottom) / 2;
-    if (eq_y < center) { // In upper half
-        q = juce::jmap(eq_y, center, top, 1.f / 18.f, 1.f); // 1 -> 18
-    }
-    else {
-        q = juce::jmap(eq_y, bottom, center, 1.f/180.f, 1.f / 18.f); // .1 -> 1
-    }
-
-    // Update Audio Processor // TODO: Maybe FilterInterface has a reference to AudioProcessor?
     std::string filterID{ "Filter" + std::to_string(filterIndex) };
     m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(cutoffFreq);
-
-    if (filterIndex == 1 || filterIndex == 2) {
-        q = 1.f / 18.f;
-    }
-    m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(q);
     m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(boostCutDB);
-
-    //DBG("Cutoff: " << cutoffFreq << ", Q : " << q << ", Boost/Cut : " << boostCutDB);
+    m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(q);
 }
 
 void EQGraphicComponent::updateChain()
@@ -328,13 +414,13 @@ void EQGraphicComponent::updateResponseCurve()
 
     auto sampleRate = m_audioProcessor.getSampleRate();
 
-    std::vector<double> mags;
+    std::vector<float> mags;
 
     mags.resize(w);
     
     for (int i = 0; i < w; ++i) {
-        double mag = 1.f;
-        auto freq = mapToLog10(double(i) / double(w), 20.0, 20000.0);
+        float mag = 1.f;
+        float freq = mapToLog10(i / float(w), FREQ_RANGE.first, FREQ_RANGE.second);
 
         //if (!monoChain.isBypassed<ChainPositions::Peak>())
             mag *= peak0.coefficients->getMagnitudeForFrequency(freq, sampleRate);
@@ -383,178 +469,171 @@ void EQGraphicComponent::updateResponseCurve()
     }
 }
 
-void EQGraphicComponent::adjustFiltersAtClickPoint(int x, int y)
+void EQGraphicComponent::adjustFiltersAtClickPoint(const EQPoint& filterPos)
 {
-    int filterIndex = m_filterInterface.inBoundsOfCircle(x, y);
+    int filterIndex = m_filterInterface.inBoundsOfCircle(filterPos);
     if (filterIndex != -1) {
         auto& comp = m_filterInterface.fcomps[filterIndex];
-        float w = comp.getWidth();
-        float h = comp.getHeight();
-        float newX = x - (w / 2);
-        float newY = y - (h / 2);
-        comp.setBounds(newX, newY, w, h);
+        int newFilterX = filterPos.getX() - (comp.getWidth() / 2);
+        int newFilterY = filterPos.getY() - (comp.getHeight() / 2);
+        comp.setBounds(newFilterX, newFilterY, comp.getWidth(), comp.getHeight());
 
-        updateFilterParamsFromCoords(filterIndex, newX, newY);
+        updateFilterParamsFromCoords(filterIndex, {newFilterX - comp.getWidth()/3, newFilterY - comp.getHeight()});
     }
     updateChain();
     repaint();
 }
 
-int EQGraphicComponent::findPreviousValidX(int x) {
-    x--;
-    for (; x >= 0 && m_drawnPoints[x] == -1; --x);
-    return x;
-}
-
-std::pair<int, int> EQGraphicComponent::findNearestAxisFromLine(int ax, int ay, int bx, int by, bool forward) {
-    float m = (float(by) - float(ay)) / (float(bx) - float(ax));
-    float b = ay - m * ax;
-
-    if (!forward) {    
-        std::pair<int, int> axis = { 0, int(b) };
-        if (b < 0) {
-            axis = { 0, getAnalysisArea().getCentreY() }; // Default to 0db
-        }
-        else if (b >= getAnalysisArea().getBottom()) {
-            axis = { int((getAnalysisArea().getBottom() - b) / m), getAnalysisArea().getBottom() };
-        }
-        return axis;
-    }
-    else {
-        auto bounds = getAnalysisArea();
-        int ax = bounds.getX() + bounds.getWidth();
-        int ay = m * ax + b;
-        std::pair<int, int> axis = { ax, ay};
-        if (ay < 0) {
-            axis = { ax, getAnalysisArea().getCentreY() }; // Default to 0db
-        }
-        else if (ay >= getAnalysisArea().getBottom()) {
-            axis = { int((getAnalysisArea().getBottom() - b) / m), getAnalysisArea().getBottom() };
-        }
-        return axis;
-    }
-    return { -1, -1 };
-}
-
-void EQGraphicComponent::resetCurveDraw(int x, int y) {
-    startX = x;
-    prevX = -1;
-    drewToAxis = false;
+void EQGraphicComponent::resetCurveDraw(const EQPoint& mouseDownPoint) {
+    m_prevX = -1;
+    m_drewToAxis = false;
     std::fill(m_drawnPoints.begin(), m_drawnPoints.end(), -1);
+    m_drawnPoints[mouseDownPoint.getX()] = mouseDownPoint.getY();
     m_drawCurve.clear();
-    m_drawnPoints[x] = y;
-    m_drawCurve.startNewSubPath(x, y);
+    m_drawCurve.startNewSubPath(mouseDownPoint.getX(), mouseDownPoint.getY());
 }
 
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
 {   
     if (m_drawing) {
         // Draw view
-        if (prevX < event.x) { // Moving mouse right is drawing
-            int distanceFromStart = event.x - startX;
-            if (!drewToAxis && distanceFromStart > 10) {
-                int startY = m_drawnPoints[startX];
-                auto axis = findNearestAxisFromLine(startX, startY, event.x, event.y);
-                drewToAxis = true;
-                // Fill in points here from currentPos to axis
-                float xRange = event.x - axis.first;
-                float yRange = event.y - axis.second;
-                for (int i = 0; i <= xRange; ++i) {
-                    m_drawnPoints[axis.first +i] = axis.second + (float(i / xRange) * yRange);
-                }
+        if (m_prevX < event.x) { // Moving mouse right is drawing
+            EQPoint mousePos{ event.x, event.y };
+            EQPoint previousPoint = utils::findPreviousValidPoint(mousePos, m_drawnPoints);
+            if (!m_drewToAxis && previousPoint.getX() != -1) {
+                auto axis = utils::findNearestAxisPointLeftFromLine(getAnalysisArea(), previousPoint, mousePos);
+                utils::linearInterpolatePointToPoint(m_drawnPoints, axis, mousePos);
+                m_drewToAxis = true;
             }
             m_drawnPoints[event.x] = event.y;
         }
-        else if (drewToAxis) { // Erasing (can only happen after we've drawn a line to the axis)
-            // TODO: Play around with constant numbers for amount of iters
+        else if (m_drewToAxis) { // Erasing (can only happen after we've drawn a line to the axis)
             for (int i = event.x; i < m_drawnPoints.size(); ++i) m_drawnPoints[i] = -1;
         }
-        prevX = event.x;
+        m_prevX = event.x;
     }
     else {
         // Filter view
-        adjustFiltersAtClickPoint(event.x, event.y);
+        adjustFiltersAtClickPoint({event.x, event.y});
     }
     repaint();
 }
 
-// TODO
-std::vector<float> EQGraphicComponent::normalizedDrawnPoints(std::vector<int>& drawnPoints) {
-    std::vector<float> normalizedPoints;
-    std::copy(drawnPoints.begin(), drawnPoints.end(), std::back_inserter(normalizedPoints));
-    
-    // 1) Flip coords
-    auto bounds = getAnalysisArea();
-    float prevNonNeg = -1;
-    for (auto& point : normalizedPoints) {
-        if (point != -1) {
-            prevNonNeg = point;
-        }
-        else {
-            point = prevNonNeg;
-        }
-    }
-    auto it = std::find_if(normalizedPoints.begin(), normalizedPoints.end(), [](float num) {return num != -1;});
-    auto firstNonNeg = *it;
-    std::fill(normalizedPoints.begin(), it, firstNonNeg);
-
-    // 2) TODO: Interpolate between points
-
-    // 3) Map to DB
-    for (auto& p : normalizedPoints) {
-        p = juce::jmap(p, static_cast<float>(bounds.getBottom()), static_cast<float>(bounds.getY()), GAIN_RANGE.first, GAIN_RANGE.second);
-    }
-    
-    return normalizedPoints;
-}
-
 void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
 {
-    DBG("Mouse down");
     if (m_drawing) {
-        resetCurveDraw(event.x, event.y);
+        resetCurveDraw({event.x, event.y});
     }
     repaint();
 }
 
 void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
 {
-    DBG("Mouse up");
-    if (m_drawing) {
-        
-        int xBefore = findPreviousValidX(event.x);
-        if (xBefore >= 0) {
-            auto axis = findNearestAxisFromLine(xBefore, m_drawnPoints[xBefore], event.x, event.y, true);
-            // Fill in points here from currentPos to axis
-            float xRange = axis.first - event.x;
-            float yRange = axis.second - event.y;
+    if (m_drawing) { 
+        EQPoint previousPoint = utils::findPreviousValidPoint({event.x, event.y}, m_drawnPoints);
+        if (previousPoint.getX() >= 0) {
+            EQPoint mousePos{ event.x, event.y };
+            const auto axis = utils::findNearestAxisPointRightFromLine(getAnalysisArea(), previousPoint, mousePos);
 
-            for (int i = 0; i <= xRange; ++i) {
-                if ((event.x + i) < m_drawnPoints.size()) {
-                    m_drawnPoints[event.x + i] = event.y + (float(i / xRange) * yRange);
-                }
-                else {
-                    DBG("Out of range");
-                }
-            }
+            utils::linearInterpolatePointToPoint(m_drawnPoints, mousePos, axis);
         }
+
+        // Emulate with threads, create 4 each solving for one filter with flat response on area outside of fourth of screen
+        // Eventually we can play around with how many threads to construct based on shape of drawing
+
+        auto bounds = getAnalysisArea();
+        auto w = bounds.getWidth();
+        std::vector<int> pos{ w / 5, 2 * w / 5, 3 * w / 5, 4 * w / 5 };
+        auto mapPosToFreq = [](int index, auto& bounds) {
+            return juce::mapToLog10(float(index+1)/5, FREQ_RANGE.first, FREQ_RANGE.second);
+        };
+
+        //juce::String fst0Id = "Filter0";
+        //fsolve::FilterSolverThread fst0(
+        //    utils::normalizedDrawnPoints(bounds, m_drawnPoints, {0.f, pos[0]}),
+        //    makePeakFilter,
+        //    { mapPosToFreq(0, bounds), 1.f, 0.f},
+        //    m_audioProcessor,
+        //    fst0Id);
+        //fst0.startThread();
+
+        juce::String fst1Id = "Filter1";
+        fsolve::FilterSolverThread fst1(
+            utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[0], pos[1] }),
+            makePeakFilter,
+            { mapPosToFreq(1, bounds), 1.f, 0.f },
+            m_audioProcessor,
+            fst1Id);
+        fst1.startThread();
+
+        //juce::String fst2Id = "Filter2";
+        //fsolve::FilterSolverThread fst2(
+        //    utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[1], pos[2] }),
+        //    makePeakFilter,
+        //    { mapPosToFreq(2, bounds), 1.f, 0.f },
+        //    m_audioProcessor,
+        //    fst2Id);
+        //fst2.startThread();
+
+        //juce::String fst3Id = "Filter3";
+        //fsolve::FilterSolverThread fst3(
+        //    utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[2], pos[3] }),
+        //    makePeakFilter,
+        //    { mapPosToFreq(3, bounds), 1.f, 0.f },
+        //    m_audioProcessor,
+        //    fst3Id);
+        //fst3.startThread();
+
+        //fst0.waitForThreadToExit(-1);
+        fst1.waitForThreadToExit(-1);
+        //fst2.waitForThreadToExit(-1);
+        //fst3.waitForThreadToExit(-1);
+
+
+        //auto mapParamToFrac = [](auto param, auto start, auto end) {
+        //    return juce::jmap(param, start, end, 0.f, 1.f);
+        //};
+
+        //auto mapFreqToFrac = [&](auto freq) {return mapParamToFrac(freq, FREQ_RANGE.first, FREQ_RANGE.second);};
+        //auto mapQToFrac = [&](auto q) {return mapParamToFrac(q, Q_RANGE.first, Q_RANGE.second);};
+        //auto mapGainToFrac = [&](auto gain) {return mapParamToFrac(gain, GAIN_RANGE.first, GAIN_RANGE.second);};
+
+        //FilterParams fp0 = fst0.getFilterParams();
+        //m_audioProcessor.apvts.getParameter(fst0Id + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp0.cutoffFreq));
+        //m_audioProcessor.apvts.getParameter(fst0Id + "Q")->setValueNotifyingHost(mapQToFrac(fp0.q));
+        //m_audioProcessor.apvts.getParameter(fst0Id + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(fp0.boostCutDB));
+
+        //FilterParams fp1 = fst1.getFilterParams();
+        //m_audioProcessor.apvts.getParameter(fst1Id + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp1.cutoffFreq));
+        //m_audioProcessor.apvts.getParameter(fst1Id + "Q")->setValueNotifyingHost(mapQToFrac(fp1.q));
+        //m_audioProcessor.apvts.getParameter(fst1Id + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(fp1.boostCutDB));
+
+        //FilterParams fp2 = fst2.getFilterParams();
+        //m_audioProcessor.apvts.getParameter(fst2Id + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp2.cutoffFreq));
+        //m_audioProcessor.apvts.getParameter(fst2Id + "Q")->setValueNotifyingHost(mapQToFrac(fp2.q));
+        //m_audioProcessor.apvts.getParameter(fst2Id + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(fp2.boostCutDB));
+
+        //FilterParams fp3 = fst3.getFilterParams();
+        //m_audioProcessor.apvts.getParameter(fst3Id + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp3.cutoffFreq));
+        //m_audioProcessor.apvts.getParameter(fst3Id + "Q")->setValueNotifyingHost(mapQToFrac(fp3.q));
+        //m_audioProcessor.apvts.getParameter(fst3Id + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(fp3.boostCutDB));
 
         // Should be done async
-        fsolve::FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
-        std::vector<FilterParams> fps = fs.runSolver();
+        // fsolve::FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
+        // std::vector<FilterParams> fps = fs.runSolver();
 
         // Update Audio Processor
-        for (int filterIndex = 0; filterIndex < NUM_FILTERS; ++filterIndex) {
-            std::string filterID{ "Filter" + std::to_string(filterIndex) };
-            const auto& fp = fps[filterIndex];
+        //for (int filterIndex = 0; filterIndex < NUM_FILTERS; ++filterIndex) {
+        //    std::string filterID{ "Filter" + std::to_string(filterIndex) };
+        //    const auto& fp = fps[filterIndex];
 
-            float newCutoff = juce::jmap(fp.cutoffFreq, FREQ_RANGE.first, FREQ_RANGE.second, 0.f, 1.f);
-            float newQ = juce::jmap(fp.q, Q_RANGE.first, Q_RANGE.second, 0.f, 1.f);
-            float newGain = juce::jmap(fp.boostCutDB, GAIN_RANGE.first, GAIN_RANGE.second, 0.f, 1.f);
-            m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(newCutoff);
-            m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(newQ);
-            m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(newGain);
-        }
+        //    float newCutoff = juce::jmap(fp.cutoffFreq, FREQ_RANGE.first, FREQ_RANGE.second, 0.f, 1.f);
+        //    float newQ = juce::jmap(fp.q, Q_RANGE.first, Q_RANGE.second, 0.f, 1.f);
+        //    float newGain = juce::jmap(fp.boostCutDB, GAIN_RANGE.first, GAIN_RANGE.second, 0.f, 1.f);
+        //    m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(newCutoff);
+        //    m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(newQ);
+        //    m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(newGain);
+        //}
 
         setFilterAnchorPositions();
 
@@ -567,7 +646,7 @@ void EQGraphicComponent::mouseDoubleClick(const juce::MouseEvent& event)
 {
     m_drawing = !m_drawing;
     if (m_drawing) {
-        resetCurveDraw(event.x, event.y);
+        resetCurveDraw({event.x, event.y});
     }
     repaint();
 }
@@ -577,7 +656,7 @@ std::vector<float> EQGraphicComponent::getXs(const std::vector<float>& freqs, fl
     std::vector<float> xs;
     for (auto f : freqs)
     {
-        auto normX = juce::mapFromLog10(f, 20.f, 20000.f);
+        auto normX = juce::mapFromLog10(f, FREQ_RANGE.first, FREQ_RANGE.second);
         xs.push_back(left + width * normX);
     }
 
@@ -626,32 +705,22 @@ std::vector<float> EQGraphicComponent::getGains()
 void EQGraphicComponent::drawBackgroundGrid(juce::Graphics& g)
 {
     using namespace juce;
-    auto freqs = getFrequencies();
-
-    auto renderArea = getAnalysisArea();
-
-    auto left = renderArea.getX();
-    auto right = renderArea.getRight();
-    auto top = renderArea.getY();
-    auto bottom = renderArea.getBottom();
-    auto width = renderArea.getWidth();
-
-    auto xs = getXs(freqs, left, width);
 
     g.setColour(Colours::dimgrey);
+
+    auto renderArea = getAnalysisArea();
+    auto xs = getXs(getFrequencies(), renderArea.getX(), renderArea.getWidth());
     for (auto x : xs)
     {
-        g.drawVerticalLine(x, top, bottom);
+        g.drawVerticalLine(x, renderArea.getY(), renderArea.getBottom());
     }
 
-    auto gain = getGains();
-
-    for (auto gDb : gain)
+    for (auto gDb : getGains())
     {
-        auto y = jmap(gDb, -24.f, 24.f, float(bottom), float(top));
+        auto y = jmap(gDb, -24.f, 24.f, float(renderArea.getBottom()), float(renderArea.getY()));
 
         g.setColour(gDb == 0.f ? Colour(0u, 172u, 1u) : Colours::darkgrey);
-        g.drawHorizontalLine(y, left, right);
+        g.drawHorizontalLine(y, renderArea.getX(), renderArea.getRight());
     }
 }
 
@@ -669,6 +738,6 @@ void FilterCircle::paint(juce::Graphics& g)
     g.setColour(Colours::orange);
 
     auto bounds = getLocalBounds();
-    juce::Rectangle<float> floatBounds(bounds.getX(), bounds.getY(), bounds.getWidth()-1, bounds.getHeight()-1);
+    juce::Rectangle<float> floatBounds(bounds.getX(), bounds.getY(), bounds.getWidth()-5, bounds.getHeight()-5);
     g.drawEllipse(floatBounds, 1.0);
 }

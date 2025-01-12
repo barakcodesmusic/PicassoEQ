@@ -20,13 +20,6 @@ CPMAddPackage(
     SOURCE_DIR ${LIB_DIR}/juce
 )
 
-# CPMAddPackage(
-#     NAME dlib
-#     GITHUB_REPOSITORY davisking/dlib
-#     VERSION 19.24.6
-#     SOURCE_DIR ${LIB_DIR}/dlib
-# )
-
 CPMAddPackage(
     NAME eigen
     GIT_REPOSITORY https://gitlab.com/libeigen/eigen

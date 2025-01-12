@@ -13,13 +13,15 @@
 
 #include <vector>
 
+using EQPoint = juce::Point<int>;
+
 template <int NumFilters, typename Component, typename FilterChain>
 struct FilterInterface {
     // Returns >0 if x/y inside bounds of one of the circles
     // this FilterInfo object owns
-    int inBoundsOfCircle(int x, int y) {
+    int inBoundsOfCircle(const EQPoint& p) {
         for (int i = 0; i < NumFilters; ++i) {
-            if (fcomps[i].getBounds().contains(x, y)) {
+            if (fcomps[i].getBounds().contains(p)) {
                 return i;
             }
         }
@@ -65,7 +67,6 @@ public:
     
     void drawBackgroundGrid(juce::Graphics& g);
 
-    std::vector<float> normalizedDrawnPoints(std::vector<int>& drawnPoints);
     std::vector<float> getXs(const std::vector<float>& freqs, float left, float width);
     juce::Rectangle<int> getRenderArea();
     juce::Rectangle<int> getAnalysisArea();
@@ -73,25 +74,22 @@ public:
     std::vector<float> getFrequencies();
     std::vector<float> getGains();
 
-    void updateFilterParamsFromCoords(int filterIndex, float eq_x, float eq_y);
     void updateChain();
 
 private:
     void updateDrawnCurve();
     void updateResponseCurve();
-    void adjustFiltersAtClickPoint(int x, int y);
-    void resetCurveDraw(int x, int y);
-    int findPreviousValidX(int x);
-    std::pair<int, int> findNearestAxisFromLine(int ax, int ay, int bx, int by, bool forward=false);
+    void adjustFiltersAtClickPoint(const EQPoint& filterPos);
+    void updateFilterParamsFromCoords(int filterIndex, const EQPoint& filterPos);
+    void resetCurveDraw(const EQPoint& mouseDownPoint);
 
     PicassoEQAudioProcessor& m_audioProcessor;
     juce::Path m_responseCurve;
     juce::Path m_drawCurve;
     bool m_drawing;
     std::vector<int> m_drawnPoints;
-    int prevX = -1; // TODO: Clean up, should be in seperate class probably
-    int startX = -1;
-    bool drewToAxis = false; // TODO: Clean up, should be in seperate class probably
+    int m_prevX = -1; // TODO: Clean up, should be in seperate class probably
+    bool m_drewToAxis = false; // TODO: Clean up, should be in seperate class probably
     FilterInterface<NUM_FILTERS, FilterCircle, MonoChain> m_filterInterface;
 };
 
