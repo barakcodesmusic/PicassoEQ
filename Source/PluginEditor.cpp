@@ -525,7 +525,10 @@ void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
     if (m_drawing) {
         // Draw view
         if (m_prevX < event.x) { // Moving mouse right is drawing
+
             EQPoint mousePos{ event.x, event.y };
+            if (!utils::validPosition(getAnalysisArea(), mousePos)) return;
+
             EQPoint previousPoint = utils::findPreviousValidPoint(mousePos, m_drawnPoints);
             if (!m_drewToAxis && previousPoint.getX() != -1) {
                 auto axis = utils::findNearestAxisPointLeftFromLine(getAnalysisArea(), previousPoint, mousePos);
@@ -584,7 +587,7 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
 
         auto bounds = getAnalysisArea();
         auto w = bounds.getWidth();
-        std::vector<int> pos{ w / 5, 2 * w / 5, 3 * w / 5, 4 * w / 5 };
+        std::vector<int> pos{ w / 4, 2 * w / 4, 3 * w / 4, w };
         auto mapPosToFreq = [](int index, auto& bounds) {
             return juce::mapToLog10(float(index+1)/5, FREQ_RANGE.first, FREQ_RANGE.second);
         };
@@ -597,7 +600,7 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
             makePeakFilter,
             FilterParams({ mapPosToFreq(0, bounds), 1.f, 0.f }),
             m_audioProcessor.getSampleRate(),
-			cb
+		    cb
         );
 
         threadManager.addThread(
