@@ -23,9 +23,9 @@ constexpr int PARAMS_PER_FILTER = 3;
 constexpr int NUM_PARAMS = PARAMS_PER_FILTER * NUM_FILTERS;
 
 struct FPSteps {
-    float freqStep = 0.001f;
-    float qStep = 0.001f;
-    float boostCutDBStep = 0.001f;
+    float freqStep = 0.00001f;
+    float qStep = 0.0001f;
+    float boostCutDBStep = 0.0001f;
 };
 
 using Eigen::VectorXf;

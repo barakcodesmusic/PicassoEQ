@@ -17,6 +17,26 @@
 
 namespace fsolve {
 
+namespace {
+
+auto mapFracToParam = [](auto frac, auto start, auto end) {
+    return juce::jmap(frac, start, end);
+};
+
+auto mapParamToFrac = [](auto param, auto start, auto end) {
+    return juce::jmap(param, start, end, 0.f, 1.f);
+};
+
+auto mapFreqToFrac = [&](auto freq) {return mapParamToFrac(freq, FREQ_RANGE.first, FREQ_RANGE.second);};
+auto mapQToFrac = [&](auto q) {return mapParamToFrac(q, Q_RANGE.first, Q_RANGE.second);};
+auto mapDBToFrac = [&](auto gain) {return mapParamToFrac(gain, GAIN_RANGE.first, GAIN_RANGE.second);};
+//auto mapDBToFrac = [&](auto frac) {return mapFracToParam(frac, -100, GAIN_RANGE.second);};
+
+auto mapFracToFreq = [&](auto frac) {return mapFracToParam(frac, FREQ_RANGE.first, FREQ_RANGE.second);};
+auto mapFracToQ = [&](auto frac) {return mapFracToParam(frac, Q_RANGE.first, Q_RANGE.second);};
+auto mapFracToDB = [&](auto frac) {return mapFracToParam(frac, GAIN_RANGE.first, GAIN_RANGE.second);};
+}
+
 using namespace LBFGSpp;
 
 FilterSolver::FilterSolver(std::vector<float> drawnPoints, float sampleRate) :
@@ -188,7 +208,7 @@ FilterSolverThread::~FilterSolverThread()
 
 void FilterSolverThread::solverUpdateCoefficients(const VectorXf& variables) {
     // TODO: Only make when necessary
-    const FilterParams guessFP{ variables(0) , variables(1) , variables(2) };
+    const FilterParams guessFP{ mapFracToFreq(variables(0)) , mapFracToQ(variables(1)) , mapFracToDB(variables(2)) };
     auto peakCoefficients = m_coefficientSolver(guessFP, m_audioProcessor.getSampleRate());
     updateCoefficients(m_filter.coefficients, peakCoefficients);
 }
@@ -200,9 +220,10 @@ float FilterSolverThread::getGrad(const VectorXf& vars, int pos, float stepSize)
     VectorXf perturb_back = vars;
     perturb_back(pos) -= stepSize;
 
-    float solveForward = solve(perturb_forw);
-    float solveBackward = solve(perturb_back);
-    float grad = (solveForward - solveBackward) / (2 * stepSize);
+    float f = solve(perturb_forw);
+    float b = solve(perturb_back);
+
+    float grad = (f - b) / (2.f * stepSize);
     return grad;
 }
 
@@ -216,25 +237,24 @@ float FilterSolverThread::solve(const VectorXf& variables) {
     for (int i = 0; i < m_dbsToSolve.size(); ++i) {
         float point = float(i) / m_dbsToSolve.size();
         float pointToFreq = juce::mapToLog10(point, FREQ_RANGE.first, FREQ_RANGE.second);
-        float mag = m_filter.coefficients->getMagnitudeForFrequency(pointToFreq, m_audioProcessor.getSampleRate());
+        float sampleRate = m_audioProcessor.getSampleRate();
+        float mag = m_filter.coefficients->getMagnitudeForFrequency(pointToFreq, sampleRate);
         float calcDecibels = juce::Decibels::gainToDecibels(mag);
-        loss += std::abs(m_dbsToSolve[i] - calcDecibels); // absolute difference
+        float dist = mapDBToFrac(m_dbsToSolve[i]) - mapDBToFrac(calcDecibels);
+        loss += std::abs(dist); // absolute difference
     }
     return loss;
 }
 
 float FilterSolverThread::operator()(const VectorXf& variables, VectorXf& grad) {
 
-    if (iterationCount % 5 == 0) {
-        grad[0] = getGrad(variables, 0, this->m_fpSteps.freqStep);
-        // q step
-        grad[1] = getGrad(variables, 1, this->m_fpSteps.qStep);
-        // gain step
-        grad[2] = getGrad(variables, 2, this->m_fpSteps.boostCutDBStep);   
-    }
+    // freq step
+    grad[0] = getGrad(variables, 0, this->m_fpSteps.freqStep);
+    // q step
+    grad[1] = getGrad(variables, 1, this->m_fpSteps.qStep);
+    // gain step
+    grad[2] = getGrad(variables, 2, this->m_fpSteps.boostCutDBStep);   
 
-    // TODO: Update grad steps (for Q especially)
-    //this->m_fpSteps.updateSteps(vars(i), vars(i + 1), vars(i + 2));
     iterationCount += 1;
     return solve(variables);
 }
@@ -245,61 +265,57 @@ void FilterSolverThread::run()
     VectorXf variables(PARAMS_PER_FILTER);
     variables.setZero();
 
-    variables(0) = m_filterParams.cutoffFreq; // Frequency guess
-    variables(1) = m_filterParams.q; // Q guess
-    variables(2) = m_filterParams.boostCutDB; // Boost/Cut DB guess
+    variables(0) = mapFreqToFrac(m_filterParams.cutoffFreq); // Frequency guess
+    variables(1) = mapQToFrac(m_filterParams.q); // Q guess
+    variables(2) = mapDBToFrac(m_filterParams.boostCutDB); // Boost/Cut DB guess
    
     solverUpdateCoefficients(variables);
 
     // Set up parameters
     LBFGSBParam<float> param;
-    param.epsilon = 1e-4;
-    param.epsilon_rel = 1e-4;
-    param.max_iterations = 250;
-    param.max_linesearch = 1000;
-    param.ftol = 1e-2;
-    param.wolfe = 0.7;
-    //param.ftol = 0.4;
-    //param.wolfe = 0.9;
+    param.epsilon = 1e-10;
+    //param.delta = 1e-10;
+    //param.past = 20;
+    //param.epsilon_rel = 1e-4;
+    param.max_iterations = 200;
+    param.max_linesearch = 500;
+    param.m = 20;
+    //param.ftol = 0.1;
+    param.min_step = 1e-5;
+    //param.ftol = 1e-2;
+    //param.wolfe = 0.7;
 
-    // Create solver and function object
-    LBFGSBSolver<float> solver(param);
+
 
     VectorXf lb = VectorXf::Constant(PARAMS_PER_FILTER, 0.0f);
     VectorXf ub = VectorXf::Constant(PARAMS_PER_FILTER, 0.0f);
 
     // Set bounds for fcs
-    lb[0] = FREQ_RANGE.first;
-    lb[1] = Q_RANGE.first;
-    lb[2] = GAIN_RANGE.first;
-    ub[0] = FREQ_RANGE.second;
-    ub[1] = Q_RANGE.second;
-    ub[2] = GAIN_RANGE.second;
+    lb[0] = 0;
+    lb[1] = 0;
+    lb[2] = 0;
+    ub[0] = 1;
+    ub[1] = 1;
+    ub[2] = 1;
     
     // x will be overwritten to be the best point found
     try {
-        float fx;
-        int niter = solver.minimize(*this, variables, fx, lb, ub);
+        // Create solver and function object
+        LBFGSBSolver<float> solver(param);
+        float fx = solve(variables);
+        int result = solver.minimize(*this, variables, fx, lb, ub);
     }
-    catch (...) {
+    catch (const std::exception& e) {
         DBG("Solver quit");
     }
 
-    m_filterParams.cutoffFreq = variables(0);
-    m_filterParams.q = variables(1);
-    m_filterParams.boostCutDB = variables(2);
-
-    auto mapParamToFrac = [](auto param, auto start, auto end) {
-        return juce::jmap(param, start, end, 0.f, 1.f);
-    };
-
-    auto mapFreqToFrac = [&](auto freq) {return mapParamToFrac(freq, FREQ_RANGE.first, FREQ_RANGE.second);};
-    auto mapQToFrac = [&](auto q) {return mapParamToFrac(q, Q_RANGE.first, Q_RANGE.second);};
-    auto mapGainToFrac = [&](auto gain) {return mapParamToFrac(gain, GAIN_RANGE.first, GAIN_RANGE.second);};
+    m_filterParams.cutoffFreq = mapFracToFreq(variables(0));
+    m_filterParams.q = mapFracToQ(variables(1));
+    m_filterParams.boostCutDB = mapFracToDB(variables(2));
 
     m_audioProcessor.apvts.getParameter(m_filterName + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(m_filterParams.cutoffFreq));
     m_audioProcessor.apvts.getParameter(m_filterName + "Q")->setValueNotifyingHost(mapQToFrac(m_filterParams.q));
-    m_audioProcessor.apvts.getParameter(m_filterName + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(m_filterParams.boostCutDB));
+    m_audioProcessor.apvts.getParameter(m_filterName + "BoostCutDB")->setValueNotifyingHost(mapDBToFrac(m_filterParams.boostCutDB));
 
     std::ostringstream oss;
     oss << m_filterParams;

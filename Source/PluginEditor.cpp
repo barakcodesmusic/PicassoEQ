@@ -47,6 +47,41 @@ EQPoint findNearestAxisPointLeftFromLine(const juce::Rectangle<int>& bounds, con
     return axis;
 }
 
+EQPoint findPreviousValidPoint(const EQPoint& startPos, const std::vector<int>& vals) {
+    int x = startPos.getX() - 20; // Get a good distance
+    for (; x >= 0 && (vals[x] == -1); --x);
+    if (x == -1) return { -1, -1 };
+    return { x, vals[x] };
+}
+
+template <typename Number>
+void linearInterpolatePointToPoint(std::vector<Number>& vals, const EQPoint& start, const EQPoint& end) {
+
+	if (start.getX() < 0 || end.getX() > vals.size()) {
+		return;
+	}
+
+    jassert(end.getX() < vals.size());
+    jassert(end.getX() >= start.getX());
+
+    float xRange = end.getX() - start.x;
+    float yRange = end.getY() - start.y;
+
+    for (int i = 0; i <= xRange; ++i) {
+        // Asserts protect this array access
+        vals[start.x + i] = start.y + (i / xRange * yRange);
+    }
+}
+
+bool validPosition(const juce::Rectangle<int>& bounds, const EQPoint& pos) {
+    int l = bounds.getX();
+    int r = bounds.getX() + bounds.getWidth();
+    int u = bounds.getY();
+    int b = bounds.getBottom();
+
+    return pos.x >= l && pos.x <= r && pos.y >= u && pos.y <= b;
+}
+
 std::vector<float> normalizedDrawnPoints(const juce::Rectangle<int>& bounds, std::vector<int>& drawnPoints, std::pair<int, int> normalizeRange) {
     std::vector<float> normalizedPoints;
     std::copy(drawnPoints.begin(), drawnPoints.end(), std::back_inserter(normalizedPoints));
@@ -74,32 +109,22 @@ std::vector<float> normalizedDrawnPoints(const juce::Rectangle<int>& bounds, std
     for (int i = 0; i < normalizeRange.first; ++i) {
         normalizedPoints[i] = 0; // NOTE: Assumes gain range symmetrical
     }
-    for (int i = normalizeRange.second; i < normalizedPoints.size(); ++i) {
+    for (int i = normalizeRange.second+1; i < normalizedPoints.size(); ++i) {
         normalizedPoints[i] = 0;
     }
+    // Testing smoothing out on right side
+	const int interpolateRange = 30;
+    const EQPoint rightStart{ normalizeRange.second, int(normalizedPoints[normalizeRange.second]) };
+    const EQPoint rightEnd{ normalizeRange.second + interpolateRange, 0 };
+    const EQPoint leftStart{ normalizeRange.first - interpolateRange, 0 };
+    const EQPoint leftEnd{ normalizeRange.first, int(normalizedPoints[normalizeRange.first]) };
+    
+    linearInterpolatePointToPoint(
+        normalizedPoints, rightStart, rightEnd);
+    linearInterpolatePointToPoint(
+        normalizedPoints, leftStart, leftEnd);
 
     return normalizedPoints;
-}
-
-EQPoint findPreviousValidPoint(const EQPoint& startPos, const std::vector<int>& vals) {
-    int x = startPos.getX() - 20; // Get a good distance
-    for (; x >= 0 && (vals[x] == -1); --x);
-    if (x == -1) return { -1, -1 };
-    return { x, vals[x] };
-}
-
-void linearInterpolatePointToPoint(std::vector<int>& vals, const EQPoint& start, const EQPoint& end) {
-
-    jassert(end.getX() < vals.size());
-    jassert(end.getX() >= start.getX());
-
-    float xRange = end.getX() - start.x;
-    float yRange = end.getY() - start.y;
-
-    for (int i = 0; i <= xRange; ++i) {
-        // Asserts protect this array access
-        vals[start.x + i] = start.y + (i / xRange * yRange);
-    }
 }
 
 }
@@ -521,21 +546,26 @@ void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
 
 void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
 {
+    EQPoint mouseDownPoint{ event.x, event.y };
+    if (!utils::validPosition(getAnalysisArea(), mouseDownPoint)) return;
+
     if (m_drawing) {
-        resetCurveDraw({event.x, event.y});
+        resetCurveDraw(mouseDownPoint);
     }
     repaint();
 }
 
 void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
 {
+    EQPoint mouseUpPoint{ event.x, event.y };
+    if (!utils::validPosition(getAnalysisArea(), mouseUpPoint)) return;
+
     if (m_drawing) { 
         EQPoint previousPoint = utils::findPreviousValidPoint({event.x, event.y}, m_drawnPoints);
         if (previousPoint.getX() >= 0) {
-            EQPoint mousePos{ event.x, event.y };
-            const auto axis = utils::findNearestAxisPointRightFromLine(getAnalysisArea(), previousPoint, mousePos);
+            const auto axis = utils::findNearestAxisPointRightFromLine(getAnalysisArea(), previousPoint, mouseUpPoint);
 
-            utils::linearInterpolatePointToPoint(m_drawnPoints, mousePos, axis);
+            utils::linearInterpolatePointToPoint(m_drawnPoints, mouseUpPoint, axis);
         }
 
         // Emulate with threads, create 4 each solving for one filter with flat response on area outside of fourth of screen
@@ -548,14 +578,14 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
             return juce::mapToLog10(float(index+1)/5, FREQ_RANGE.first, FREQ_RANGE.second);
         };
 
-        //juce::String fst0Id = "Filter0";
-        //fsolve::FilterSolverThread fst0(
-        //    utils::normalizedDrawnPoints(bounds, m_drawnPoints, {0.f, pos[0]}),
-        //    makePeakFilter,
-        //    { mapPosToFreq(0, bounds), 1.f, 0.f},
-        //    m_audioProcessor,
-        //    fst0Id);
-        //fst0.startThread();
+        juce::String fst0Id = "Filter0";
+        fsolve::FilterSolverThread fst0(
+            utils::normalizedDrawnPoints(bounds, m_drawnPoints, {0.f, pos[0]}),
+            makePeakFilter,
+            { mapPosToFreq(0, bounds), 1.f, 0.f},
+            m_audioProcessor,
+            fst0Id);
+        fst0.startThread();
 
         juce::String fst1Id = "Filter1";
         fsolve::FilterSolverThread fst1(
@@ -566,28 +596,28 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
             fst1Id);
         fst1.startThread();
 
-        //juce::String fst2Id = "Filter2";
-        //fsolve::FilterSolverThread fst2(
-        //    utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[1], pos[2] }),
-        //    makePeakFilter,
-        //    { mapPosToFreq(2, bounds), 1.f, 0.f },
-        //    m_audioProcessor,
-        //    fst2Id);
-        //fst2.startThread();
+        juce::String fst2Id = "Filter2";
+        fsolve::FilterSolverThread fst2(
+            utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[1], pos[2] }),
+            makePeakFilter,
+            { mapPosToFreq(2, bounds), 1.f, 0.f },
+            m_audioProcessor,
+            fst2Id);
+        fst2.startThread();
 
-        //juce::String fst3Id = "Filter3";
-        //fsolve::FilterSolverThread fst3(
-        //    utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[2], pos[3] }),
-        //    makePeakFilter,
-        //    { mapPosToFreq(3, bounds), 1.f, 0.f },
-        //    m_audioProcessor,
-        //    fst3Id);
-        //fst3.startThread();
+        juce::String fst3Id = "Filter3";
+        fsolve::FilterSolverThread fst3(
+            utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[2], pos[3] }),
+            makePeakFilter,
+            { mapPosToFreq(3, bounds), 1.f, 0.f },
+            m_audioProcessor,
+            fst3Id);
+        fst3.startThread();
 
-        //fst0.waitForThreadToExit(-1);
+        fst0.waitForThreadToExit(-1);
         fst1.waitForThreadToExit(-1);
-        //fst2.waitForThreadToExit(-1);
-        //fst3.waitForThreadToExit(-1);
+        fst2.waitForThreadToExit(-1);
+        fst3.waitForThreadToExit(-1);
 
 
         //auto mapParamToFrac = [](auto param, auto start, auto end) {
