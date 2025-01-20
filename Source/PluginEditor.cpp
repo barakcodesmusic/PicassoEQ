@@ -8,7 +8,6 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include "FilterSolver.h"
 
 #include <algorithm>
 
@@ -516,6 +515,9 @@ void EQGraphicComponent::resetCurveDraw(const EQPoint& mouseDownPoint) {
     m_drawnPoints[mouseDownPoint.getX()] = mouseDownPoint.getY();
     m_drawCurve.clear();
     m_drawCurve.startNewSubPath(mouseDownPoint.getX(), mouseDownPoint.getY());
+
+    // Stop running threads
+    threadManager.reset();
 }
 
 void EQGraphicComponent::mouseDrag(const juce::MouseEvent& event)
@@ -555,6 +557,15 @@ void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
     repaint();
 }
 
+void EQGraphicComponent::solverThreadExitedCallback(const juce::String filterName, const FilterParams fp) {
+    m_audioProcessor.apvts.getParameter(filterName + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp.cutoffFreq));
+    m_audioProcessor.apvts.getParameter(filterName + "Q")->setValueNotifyingHost(mapQToFrac(fp.q));
+    m_audioProcessor.apvts.getParameter(filterName + "BoostCutDB")->setValueNotifyingHost(mapDBToFrac(fp.boostCutDB));
+
+    setFilterAnchorPositions();
+    repaint();
+}
+
 void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
 {
     EQPoint mouseUpPoint{ event.x, event.y };
@@ -578,94 +589,51 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
             return juce::mapToLog10(float(index+1)/5, FREQ_RANGE.first, FREQ_RANGE.second);
         };
 
-        juce::String fst0Id = "Filter0";
-        fsolve::FilterSolverThread fst0(
-            utils::normalizedDrawnPoints(bounds, m_drawnPoints, {0.f, pos[0]}),
-            makePeakFilter,
-            { mapPosToFreq(0, bounds), 1.f, 0.f},
-            m_audioProcessor,
-            fst0Id);
-        fst0.startThread();
+        auto cb = std::bind(&EQGraphicComponent::solverThreadExitedCallback, this, std::placeholders::_1, std::placeholders::_2);
 
-        juce::String fst1Id = "Filter1";
-        fsolve::FilterSolverThread fst1(
+		threadManager.addThread(
+            juce::String("Filter0"),
+            utils::normalizedDrawnPoints(bounds, m_drawnPoints, { 0, pos[0] }),
+            makePeakFilter,
+            FilterParams({ mapPosToFreq(0, bounds), 1.f, 0.f }),
+            m_audioProcessor.getSampleRate(),
+			cb
+        );
+
+        threadManager.addThread(
+            juce::String("Filter1"),
             utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[0], pos[1] }),
             makePeakFilter,
-            { mapPosToFreq(1, bounds), 1.f, 0.f },
-            m_audioProcessor,
-            fst1Id);
-        fst1.startThread();
+            FilterParams({ mapPosToFreq(1, bounds), 1.f, 0.f }),
+            m_audioProcessor.getSampleRate(),
+            cb
+        );
 
-        juce::String fst2Id = "Filter2";
-        fsolve::FilterSolverThread fst2(
+        threadManager.addThread(
+            juce::String("Filter2"),
             utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[1], pos[2] }),
             makePeakFilter,
-            { mapPosToFreq(2, bounds), 1.f, 0.f },
-            m_audioProcessor,
-            fst2Id);
-        fst2.startThread();
+            FilterParams({ mapPosToFreq(2, bounds), 1.f, 0.f }),
+            m_audioProcessor.getSampleRate(),
+            cb
+        );
 
-        juce::String fst3Id = "Filter3";
-        fsolve::FilterSolverThread fst3(
+        threadManager.addThread(
+            juce::String("Filter3"),
             utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[2], pos[3] }),
             makePeakFilter,
-            { mapPosToFreq(3, bounds), 1.f, 0.f },
-            m_audioProcessor,
-            fst3Id);
-        fst3.startThread();
+            FilterParams({ mapPosToFreq(3, bounds), 1.f, 0.f }),
+            m_audioProcessor.getSampleRate(),
+            cb
+        );
 
-        fst0.waitForThreadToExit(-1);
-        fst1.waitForThreadToExit(-1);
-        fst2.waitForThreadToExit(-1);
-        fst3.waitForThreadToExit(-1);
+        for (const auto& [name, t] : threadManager.getThreads()) {
+			t->startThread();
+        }
 
-
-        //auto mapParamToFrac = [](auto param, auto start, auto end) {
-        //    return juce::jmap(param, start, end, 0.f, 1.f);
-        //};
-
-        //auto mapFreqToFrac = [&](auto freq) {return mapParamToFrac(freq, FREQ_RANGE.first, FREQ_RANGE.second);};
-        //auto mapQToFrac = [&](auto q) {return mapParamToFrac(q, Q_RANGE.first, Q_RANGE.second);};
-        //auto mapGainToFrac = [&](auto gain) {return mapParamToFrac(gain, GAIN_RANGE.first, GAIN_RANGE.second);};
-
-        //FilterParams fp0 = fst0.getFilterParams();
-        //m_audioProcessor.apvts.getParameter(fst0Id + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp0.cutoffFreq));
-        //m_audioProcessor.apvts.getParameter(fst0Id + "Q")->setValueNotifyingHost(mapQToFrac(fp0.q));
-        //m_audioProcessor.apvts.getParameter(fst0Id + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(fp0.boostCutDB));
-
-        //FilterParams fp1 = fst1.getFilterParams();
-        //m_audioProcessor.apvts.getParameter(fst1Id + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp1.cutoffFreq));
-        //m_audioProcessor.apvts.getParameter(fst1Id + "Q")->setValueNotifyingHost(mapQToFrac(fp1.q));
-        //m_audioProcessor.apvts.getParameter(fst1Id + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(fp1.boostCutDB));
-
-        //FilterParams fp2 = fst2.getFilterParams();
-        //m_audioProcessor.apvts.getParameter(fst2Id + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp2.cutoffFreq));
-        //m_audioProcessor.apvts.getParameter(fst2Id + "Q")->setValueNotifyingHost(mapQToFrac(fp2.q));
-        //m_audioProcessor.apvts.getParameter(fst2Id + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(fp2.boostCutDB));
-
-        //FilterParams fp3 = fst3.getFilterParams();
-        //m_audioProcessor.apvts.getParameter(fst3Id + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp3.cutoffFreq));
-        //m_audioProcessor.apvts.getParameter(fst3Id + "Q")->setValueNotifyingHost(mapQToFrac(fp3.q));
-        //m_audioProcessor.apvts.getParameter(fst3Id + "BoostCutDB")->setValueNotifyingHost(mapGainToFrac(fp3.boostCutDB));
-
-        // Should be done async
-        // fsolve::FilterSolver fs(normalizedDrawnPoints(m_drawnPoints), m_audioProcessor.getSampleRate());
-        // std::vector<FilterParams> fps = fs.runSolver();
-
-        // Update Audio Processor
-        //for (int filterIndex = 0; filterIndex < NUM_FILTERS; ++filterIndex) {
-        //    std::string filterID{ "Filter" + std::to_string(filterIndex) };
-        //    const auto& fp = fps[filterIndex];
-
-        //    float newCutoff = juce::jmap(fp.cutoffFreq, FREQ_RANGE.first, FREQ_RANGE.second, 0.f, 1.f);
-        //    float newQ = juce::jmap(fp.q, Q_RANGE.first, Q_RANGE.second, 0.f, 1.f);
-        //    float newGain = juce::jmap(fp.boostCutDB, GAIN_RANGE.first, GAIN_RANGE.second, 0.f, 1.f);
-        //    m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(newCutoff);
-        //    m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(newQ);
-        //    m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(newGain);
+        //for (const auto& t : threadManager.getThreads()) {
+        //    t->waitForThreadToExit(-1);
         //}
-
-        setFilterAnchorPositions();
 
         m_drawing = false;
     }

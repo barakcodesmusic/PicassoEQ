@@ -10,8 +10,67 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "FilterSolver.h"
 
 #include <vector>
+
+class ThreadManager {
+public:
+	ThreadManager() {}
+	~ThreadManager() {
+		for (const auto& [name, thread] : m_solverThreads) {
+			thread->stopThread(1000);
+		}
+	}
+	void addThread(
+        const juce::String& filterName,
+        std::vector<float>&& dbsToSolve,
+        fsolve::CoefficientSolver&& coefficientSolver,
+        FilterParams&& startingParams,
+        const double sampleRate,
+        fsolve::Callback cb) {
+		m_solverThreads[filterName] = 
+            std::make_unique<fsolve::FilterSolverThread>(
+                std::move(dbsToSolve),
+                std::move(coefficientSolver),
+                std::move(startingParams),
+                filterName,
+                sampleRate,
+                cb
+        );
+	}
+	void startThreads() {
+		for (const auto& [name, thread] : m_solverThreads) {
+			thread->startThread();
+		}
+	}
+    void reset() {
+        stopThreads();
+        m_solverThreads.clear();
+    }
+	void stopThreads() {
+		for (const auto& [name, thread] : m_solverThreads) {
+			thread->stopThread(1000);
+		}
+	}
+	void joinThreads() {
+		for (const auto& [name, thread] : m_solverThreads) {
+			thread->waitForThreadToExit(-1);
+		}
+	}
+	std::unique_ptr<fsolve::FilterSolverThread>& getThread(const juce::String& name) {
+		if (m_solverThreads.find(name) == m_solverThreads.end()) {
+			jassertfalse;
+		}
+		return m_solverThreads[name];
+	}
+    std::map<juce::String, std::unique_ptr<fsolve::FilterSolverThread>>& getThreads() {
+        return m_solverThreads;
+    }
+
+private:
+    std::map<juce::String, std::unique_ptr<fsolve::FilterSolverThread>> m_solverThreads;
+};
 
 using EQPoint = juce::Point<int>;
 
@@ -75,6 +134,7 @@ public:
     std::vector<float> getGains();
 
     void updateChain();
+    void solverThreadExitedCallback(const juce::String filterName, const FilterParams fp);
 
 private:
     void updateDrawnCurve();
@@ -91,6 +151,8 @@ private:
     int m_prevX = -1; // TODO: Clean up, should be in seperate class probably
     bool m_drewToAxis = false; // TODO: Clean up, should be in seperate class probably
     FilterInterface<NUM_FILTERS, FilterCircle, MonoChain> m_filterInterface;
+
+    ThreadManager threadManager;
 };
 
 //==============================================================================

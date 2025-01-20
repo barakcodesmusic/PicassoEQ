@@ -30,28 +30,8 @@ struct FPSteps {
 
 using Eigen::VectorXf;
 
-class FilterSolver {
-public:
-    FilterSolver(std::vector<float> drawnPoints, float sampleRate);
-    ~FilterSolver();
-
-    std::vector<FilterParams> runSolver();
-    float operator()(const VectorXf& variables, VectorXf& grad);
-
-    int iterationCount{ 0 };
-
-private:
-    void updateCoefficientsBulk(const VectorXf& variables);
-    float getGrad(const VectorXf& vars, int pos, float stepSize);
-    float solve(const VectorXf& variables);
-
-    std::vector<float> m_drawnDecibels;
-    float m_sampleRate;
-    juce::dsp::ProcessorChain<Filter, Filter, Filter, Filter> m_filterChain; // TODO: Hardcoded to 4 for now
-    FPSteps m_fpSteps;
-};
-
 using CoefficientSolver = std::function<Coefficients(const FilterParams&, double)>;
+using Callback = std::function<void(const juce::String, const FilterParams)>;
 
 class FilterSolverThread : public juce::Thread {
 public:
@@ -59,8 +39,9 @@ public:
         std::vector<float>&& dbsToSolve,
         CoefficientSolver&& coefficientSolver, 
         FilterParams&& startingParams,
-        PicassoEQAudioProcessor& audioProcessor,
-        const juce::String& threadName);
+        const juce::String& filterName,
+        const double sampleRate,
+        Callback cb);
     virtual ~FilterSolverThread();
 
     virtual void run();
@@ -80,8 +61,9 @@ private:
     Filter m_filter;
     CoefficientSolver m_coefficientSolver;
     FilterParams m_filterParams;
-    PicassoEQAudioProcessor& m_audioProcessor;
     const juce::String m_filterName;
+    const double m_sampleRate;
+    Callback m_cb;
     FPSteps m_fpSteps;
 };
 

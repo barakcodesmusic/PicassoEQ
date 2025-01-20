@@ -12,11 +12,25 @@
 
 #include "TypeHelper.h"
 
-
 constexpr int NUM_FILTERS = 4;
 constexpr std::pair<float, float> FREQ_RANGE{ 20.f, 20000.f };
 constexpr std::pair<float, float> Q_RANGE{ 0.1f, 18.f };
 constexpr std::pair<float, float> GAIN_RANGE{ -24.f, 24.f };
+
+auto mapFracToParam = [](auto frac, auto start, auto end) {
+    return juce::jmap(frac, start, end);
+};
+auto mapParamToFrac = [](auto param, auto start, auto end) {
+    return juce::jmap(param, start, end, 0.f, 1.f);
+};
+
+auto mapFreqToFrac = [&](auto freq) {return mapParamToFrac(freq, FREQ_RANGE.first, FREQ_RANGE.second);};
+auto mapQToFrac = [&](auto q) {return mapParamToFrac(q, Q_RANGE.first, Q_RANGE.second);};
+auto mapDBToFrac = [&](auto gain) {return mapParamToFrac(gain, GAIN_RANGE.first, GAIN_RANGE.second);};
+
+auto mapFracToFreq = [&](auto frac) {return mapFracToParam(frac, FREQ_RANGE.first, FREQ_RANGE.second);};
+auto mapFracToQ = [&](auto frac) {return mapFracToParam(frac, Q_RANGE.first, Q_RANGE.second);};
+auto mapFracToDB = [&](auto frac) {return mapFracToParam(frac, GAIN_RANGE.first, GAIN_RANGE.second);};
 
 enum Slope
 {
