@@ -6,7 +6,6 @@
   ==============================================================================
 */
 
-#include "PluginProcessor.h"
 #include "PluginEditor.h"
 
 #include <algorithm>
@@ -81,12 +80,13 @@ bool validPosition(const juce::Rectangle<int>& bounds, const EQPoint& pos) {
     return pos.x >= l && pos.x <= r && pos.y >= u && pos.y <= b;
 }
 
-std::vector<float> normalizedDrawnPoints(const juce::Rectangle<int>& bounds, std::vector<int>& drawnPoints, std::pair<int, int> normalizeRange) {
+std::vector<float> normalizedDrawnPoints(const juce::Rectangle<int>& bounds, std::vector<int>& drawnPoints, FilterRange normalizeRange) {
     std::vector<float> normalizedPoints;
     std::copy(drawnPoints.begin(), drawnPoints.end(), std::back_inserter(normalizedPoints));
 
     // 1) Flip coords
     float prevNonNeg = -1;
+    // TODO: Linearly interpolate between points?
     for (auto& point : normalizedPoints) {
         if (point != -1) {
             prevNonNeg = point;
@@ -105,18 +105,19 @@ std::vector<float> normalizedDrawnPoints(const juce::Rectangle<int>& bounds, std
     }
 
     // TODO: Clean up eventually
-    for (int i = 0; i < normalizeRange.first; ++i) {
-        normalizedPoints[i] = 0; // NOTE: Assumes gain range symmetrical
-    }
-    for (int i = normalizeRange.second+1; i < normalizedPoints.size(); ++i) {
+    for (int i = 0; i < normalizeRange.startPixel; ++i) {
         normalizedPoints[i] = 0;
     }
-    // Testing smoothing out on right side
+    for (int i = normalizeRange.endPixel+1; i < normalizedPoints.size(); ++i) {
+        normalizedPoints[i] = 0;
+    }
+
+    // Smooth out on left and right sides of filter range
 	const int interpolateRange = 30;
-    const EQPoint rightStart{ normalizeRange.second, int(normalizedPoints[normalizeRange.second]) };
-    const EQPoint rightEnd{ normalizeRange.second + interpolateRange, 0 };
-    const EQPoint leftStart{ normalizeRange.first - interpolateRange, 0 };
-    const EQPoint leftEnd{ normalizeRange.first, int(normalizedPoints[normalizeRange.first]) };
+    const EQPoint rightStart{ normalizeRange.endPixel, int(normalizedPoints[normalizeRange.endPixel]) };
+    const EQPoint rightEnd{ normalizeRange.endPixel + interpolateRange, 0 };
+    const EQPoint leftStart{ normalizeRange.startPixel - interpolateRange, 0 };
+    const EQPoint leftEnd{ normalizeRange.startPixel, int(normalizedPoints[normalizeRange.startPixel]) };
     
     linearInterpolatePointToPoint(
         normalizedPoints, rightStart, rightEnd);
@@ -124,6 +125,56 @@ std::vector<float> normalizedDrawnPoints(const juce::Rectangle<int>& bounds, std
         normalizedPoints, leftStart, leftEnd);
 
     return normalizedPoints;
+}
+
+std::vector<FilterRange> calculateFilterRanges(const juce::Rectangle<int>& bounds, const std::vector<int>& drawnPoints) {
+
+    using namespace juce;
+
+	std::vector<FilterRange> filterRanges;
+
+    std::vector<float> nps;
+    std::copy(drawnPoints.begin(), drawnPoints.end(), std::back_inserter(nps));
+
+    // 1) Normalize vector
+    float prevNonNeg = -1;
+    for (auto& point : nps) {
+        if (point != -1) {
+            prevNonNeg = point;
+        }
+        else {
+            point = prevNonNeg;
+        }
+    }
+    auto it = std::find_if(nps.begin(), nps.end(), [](float num) {return num != -1;});
+    const auto firstNonNeg = *it;
+    std::fill(nps.begin(), it, firstNonNeg);
+
+    // 2) Map to DB
+    for (auto p : nps) {
+        p = juce::jmap(p, static_cast<float>(bounds.getBottom()), static_cast<float>(bounds.getY()), GAIN_RANGE.first, GAIN_RANGE.second);
+    }
+
+    // 3) Get direction changes for filter creation
+    std::vector<int> peaksAndValleys{ 0 };
+	const int distance = 20; // sensitivity to direction change
+    bool directionUp = nps[distance] > nps[0];
+    for (int i = distance; i < nps.size(); ++i) {
+        const bool changedDirection =
+            (directionUp && nps[i] < nps[i - distance]) ||
+            (!directionUp && nps[i] > nps[i - distance]);
+  	    if (changedDirection) {
+  		    peaksAndValleys.push_back(i);
+  		    directionUp = !directionUp;
+  	    }
+    }
+    peaksAndValleys.push_back(bounds.getWidth());
+
+    for (int i = 0; i < peaksAndValleys.size() - 1; ++i) {
+		filterRanges.push_back({ peaksAndValleys[i], peaksAndValleys[i + 1] });
+    }
+    
+    return filterRanges;
 }
 
 }
@@ -378,10 +429,9 @@ void EQGraphicComponent::updateFilterParamsFromCoords(int filterIndex, const EQP
     //    q = juce::jmap(filterPos.getX(), bounds.getBottom(), bounds.getCentreY(), 1, 10); // .1 -> 1
     //}
 
-    std::string filterID{ "Filter" + std::to_string(filterIndex) };
-    m_audioProcessor.apvts.getParameter(filterID + "LowCut Freq")->setValueNotifyingHost(cutoffFreq);
-    m_audioProcessor.apvts.getParameter(filterID + "BoostCutDB")->setValueNotifyingHost(boostCutDB);
-    m_audioProcessor.apvts.getParameter(filterID + "Q")->setValueNotifyingHost(q);
+    m_audioProcessor.apvts.getParameter(cutoffParamFromIndex(filterIndex))->setValueNotifyingHost(cutoffFreq);
+    m_audioProcessor.apvts.getParameter(gainDBParamFromIndex(filterIndex))->setValueNotifyingHost(boostCutDB);
+    m_audioProcessor.apvts.getParameter(qParamFromIndex(filterIndex))->setValueNotifyingHost(q);
 }
 
 void EQGraphicComponent::updateChain()
@@ -560,10 +610,11 @@ void EQGraphicComponent::mouseDown(const juce::MouseEvent& event)
     repaint();
 }
 
-void EQGraphicComponent::solverThreadExitedCallback(const juce::String filterName, const FilterParams fp) {
-    m_audioProcessor.apvts.getParameter(filterName + "LowCut Freq")->setValueNotifyingHost(mapFreqToFrac(fp.cutoffFreq));
-    m_audioProcessor.apvts.getParameter(filterName + "Q")->setValueNotifyingHost(mapQToFrac(fp.q));
-    m_audioProcessor.apvts.getParameter(filterName + "BoostCutDB")->setValueNotifyingHost(mapDBToFrac(fp.boostCutDB));
+void EQGraphicComponent::solverThreadExitedCallback(const int filterIndex, const FilterParams fp) {
+    // TODO: Pass down index, then derive name from there
+    m_audioProcessor.apvts.getParameter(cutoffParamFromIndex(filterIndex))->setValueNotifyingHost(mapFreqToFrac(fp.cutoffFreq));
+    m_audioProcessor.apvts.getParameter(qParamFromIndex(filterIndex))->setValueNotifyingHost(mapQToFrac(fp.q));
+    m_audioProcessor.apvts.getParameter(gainDBParamFromIndex(filterIndex))->setValueNotifyingHost(mapDBToFrac(fp.boostCutDB));
 
     setFilterAnchorPositions();
     repaint();
@@ -582,61 +633,27 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
             utils::linearInterpolatePointToPoint(m_drawnPoints, mouseUpPoint, axis);
         }
 
-        // Emulate with threads, create 4 each solving for one filter with flat response on area outside of fourth of screen
-        // Eventually we can play around with how many threads to construct based on shape of drawing
-
         auto bounds = getAnalysisArea();
-        auto w = bounds.getWidth();
-        std::vector<int> pos{ w / 4, 2 * w / 4, 3 * w / 4, w };
-        auto mapPosToFreq = [](int index, auto& bounds) {
-            return juce::mapToLog10(float(index+1)/5, FREQ_RANGE.first, FREQ_RANGE.second);
-        };
+		std::vector<FilterRange> filterRanges = utils::calculateFilterRanges(bounds, m_drawnPoints);
 
         auto cb = std::bind(&EQGraphicComponent::solverThreadExitedCallback, this, std::placeholders::_1, std::placeholders::_2);
-
-		threadManager.addThread(
-            juce::String("Filter0"),
-            utils::normalizedDrawnPoints(bounds, m_drawnPoints, { 0, pos[0] }),
-            makePeakFilter,
-            FilterParams({ mapPosToFreq(0, bounds), 1.f, 0.f }),
-            m_audioProcessor.getSampleRate(),
-		    cb
-        );
-
-        threadManager.addThread(
-            juce::String("Filter1"),
-            utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[0], pos[1] }),
-            makePeakFilter,
-            FilterParams({ mapPosToFreq(1, bounds), 1.f, 0.f }),
-            m_audioProcessor.getSampleRate(),
-            cb
-        );
-
-        threadManager.addThread(
-            juce::String("Filter2"),
-            utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[1], pos[2] }),
-            makePeakFilter,
-            FilterParams({ mapPosToFreq(2, bounds), 1.f, 0.f }),
-            m_audioProcessor.getSampleRate(),
-            cb
-        );
-
-        threadManager.addThread(
-            juce::String("Filter3"),
-            utils::normalizedDrawnPoints(bounds, m_drawnPoints, { pos[2], pos[3] }),
-            makePeakFilter,
-            FilterParams({ mapPosToFreq(3, bounds), 1.f, 0.f }),
-            m_audioProcessor.getSampleRate(),
-            cb
-        );
-
-        for (const auto& [name, t] : threadManager.getThreads()) {
-			t->startThread();
+        
+        // TODO: Need to keep track of filter positions and create filter chain based on this...
+        for (int i = 0; i < filterRanges.size(); ++i) {
+            const auto& filterRange = filterRanges[i];
+            threadManager.addThread(
+                i,
+                utils::normalizedDrawnPoints(bounds, m_drawnPoints, filterRange),
+                makePeakFilter, // TODO: figure out appropriate filter
+                filterRange.getFilterParamsGuess(), // TODO: better starting conditions
+                m_audioProcessor.getSampleRate(),
+                cb
+            );
         }
-
-        //for (const auto& t : threadManager.getThreads()) {
-        //    t->waitForThreadToExit(-1);
-        //}
+   
+        for (const auto& thread : threadManager.getThreads()) {
+	 	    thread->startThread();
+        }
 
         m_drawing = false;
     }

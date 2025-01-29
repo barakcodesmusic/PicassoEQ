@@ -23,14 +23,14 @@ FilterSolverThread::FilterSolverThread(
     std::vector<float>&& dbsToSolve,
     CoefficientSolver&& coefficientSolver, 
     FilterParams&& startingParams,
-    const juce::String& filterName,
+    const int filterIndex,
     const double sampleRate,
     Callback callback) :
-    juce::Thread(filterName),
+    juce::Thread(std::to_string(filterIndex)),
     m_dbsToSolve(std::move(dbsToSolve)),
     m_coefficientSolver(std::move(coefficientSolver)),
     m_filterParams(std::move(startingParams)),
-    m_filterName(filterName),
+    m_filterIndex(filterIndex),
     m_sampleRate(sampleRate),
     m_cb(callback)
 {
@@ -143,7 +143,7 @@ void FilterSolverThread::run()
     m_filterParams.q = mapFracToQ(variables(1));
     m_filterParams.boostCutDB = mapFracToDB(variables(2));
 
-    m_cb(m_filterName, m_filterParams);
+    m_cb(m_filterIndex, m_filterParams);
 
     std::ostringstream oss;
     oss << m_filterParams;

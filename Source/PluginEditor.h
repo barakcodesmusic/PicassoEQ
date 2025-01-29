@@ -18,29 +18,30 @@ class ThreadManager {
 public:
 	ThreadManager() {}
 	~ThreadManager() {
-		for (const auto& [name, thread] : m_solverThreads) {
+		for (const auto& thread : m_solverThreads) {
 			thread->stopThread(1000);
 		}
 	}
 	void addThread(
-        const juce::String& filterName,
+        const int filterIndex,
         std::vector<float>&& dbsToSolve,
         fsolve::CoefficientSolver&& coefficientSolver,
         FilterParams&& startingParams,
         const double sampleRate,
         fsolve::Callback cb) {
-		m_solverThreads[filterName] = 
+		jassert(filterIndex >= m_solverThreads.size());
+		m_solverThreads.push_back(
             std::make_unique<fsolve::FilterSolverThread>(
                 std::move(dbsToSolve),
                 std::move(coefficientSolver),
                 std::move(startingParams),
-                filterName,
+                filterIndex,
                 sampleRate,
                 cb
-        );
+        ));
 	}
 	void startThreads() {
-		for (const auto& [name, thread] : m_solverThreads) {
+		for (const auto& thread : m_solverThreads) {
 			thread->startThread();
 		}
 	}
@@ -49,27 +50,35 @@ public:
         m_solverThreads.clear();
     }
 	void stopThreads() {
-		for (const auto& [name, thread] : m_solverThreads) {
+		for (const auto& thread : m_solverThreads) {
 			thread->stopThread(1000);
 		}
 	}
 	void joinThreads() {
-		for (const auto& [name, thread] : m_solverThreads) {
+		for (const auto& thread : m_solverThreads) {
 			thread->waitForThreadToExit(-1);
 		}
 	}
-	std::unique_ptr<fsolve::FilterSolverThread>& getThread(const juce::String& name) {
-		if (m_solverThreads.find(name) == m_solverThreads.end()) {
-			jassertfalse;
-		}
-		return m_solverThreads[name];
+	std::unique_ptr<fsolve::FilterSolverThread>& getThread(const int filterIndex) {
+		jassert(filterIndex >= 0 && filterIndex < m_solverThreads.size());
+		return m_solverThreads[filterIndex];
 	}
-    std::map<juce::String, std::unique_ptr<fsolve::FilterSolverThread>>& getThreads() {
+    std::vector<std::unique_ptr<fsolve::FilterSolverThread>>& getThreads() {
         return m_solverThreads;
     }
 
 private:
-    std::map<juce::String, std::unique_ptr<fsolve::FilterSolverThread>> m_solverThreads;
+    std::vector<std::unique_ptr<fsolve::FilterSolverThread>> m_solverThreads;
+};
+
+// Filter range in pixels
+struct FilterRange {
+    int startPixel;
+    int endPixel;
+
+    FilterParams getFilterParamsGuess() const {
+        return { (startPixel + endPixel) / 2.f, 1.f, 0.f };
+    }
 };
 
 using EQPoint = juce::Point<int>;
@@ -134,7 +143,7 @@ public:
     std::vector<float> getGains();
 
     void updateChain();
-    void solverThreadExitedCallback(const juce::String filterName, const FilterParams fp);
+    void solverThreadExitedCallback(const int filterIndex, const FilterParams fp);
 
 private:
     void updateDrawnCurve();

@@ -9,6 +9,23 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+// TODO: Put this in utility file
+juce::String getFilterNameFromIndex(int i) {
+    return juce::String("Filter" + std::to_string(i));
+}
+
+juce::String cutoffParamFromIndex(int i) {
+    return getFilterNameFromIndex(i) + CUTOFF;
+}
+
+juce::String gainDBParamFromIndex(int i) {
+    return getFilterNameFromIndex(i) + BOOSTCUTDB;
+}
+
+juce::String qParamFromIndex(int i) {
+    return getFilterNameFromIndex(i) + Q;
+}
+
 //==============================================================================
 PicassoEQAudioProcessor::PicassoEQAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -239,22 +256,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
     for (int i = 0; i < NUM_FILTERS; ++i) {
-        std::string filterName{ "Filter" + std::to_string(i) };
         float startingFreq = juce::mapToLog10(float(i + 1) / (NUM_FILTERS + 1), 20.f, 20000.f);
-        layout.add(std::make_unique<juce::AudioParameterFloat>(filterName+"LowCut Freq",
-            "LowCut Freq",
+        layout.add(std::make_unique<juce::AudioParameterFloat>(cutoffParamFromIndex(i),
+            CUTOFF,
             juce::NormalisableRange<float>(20.f, 20000.f, 1.f, 1.f),
             startingFreq));
-        layout.add(std::make_unique<juce::AudioParameterFloat>(filterName+"Q",
-            "Q",
+        layout.add(std::make_unique<juce::AudioParameterFloat>(qParamFromIndex(i),
+            Q,
             juce::NormalisableRange<float>(0.1f, 18.f, 0.1f, 1.f),
             1.0f));
-        layout.add(std::make_unique<juce::AudioParameterFloat>(filterName + "BoostCutDB",
-            "BoostCutDB",
+        layout.add(std::make_unique<juce::AudioParameterFloat>(gainDBParamFromIndex(i),
+            BOOSTCUTDB,
             juce::NormalisableRange<float>(-24.f, 24.f, 0.5f, 1.f),
             0.0f));
-        //juce::StringArray filterAlgoStrs = dsp::getFilterAlgoStrs();
-        //layout.add(std::make_unique<juce::AudioParameterChoice>(filterName+"Filter Algorithm", "Filter Algorithn", filterAlgoStrs, 0));
     }
 
     return layout;
@@ -262,14 +276,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout PicassoEQAudioProcessor::cre
 
 FilterParams PicassoEQAudioProcessor::getUserFilterParams(int filterIndex) const
 {
-    // TODO: Cleaner way to store these names
-    std::string filterName{ "Filter" + std::to_string(filterIndex) };
     FilterParams fp{};
-    fp.cutoffFreq = apvts.getRawParameterValue(filterName+"LowCut Freq")->load();
-    fp.q = apvts.getRawParameterValue(filterName + "Q")->load();
-    fp.boostCutDB = apvts.getRawParameterValue(filterName + "BoostCutDB")->load();
-    //fp.fa = static_cast<dsp::FilterAlgorithm>(apvts.getRawParameterValue(filterName + "Filter Algorithm")->load());
-
+    fp.cutoffFreq = apvts.getRawParameterValue(cutoffParamFromIndex(filterIndex))->load();
+    fp.q = apvts.getRawParameterValue(qParamFromIndex(filterIndex))->load();
+    fp.boostCutDB = apvts.getRawParameterValue(gainDBParamFromIndex(filterIndex))->load();
     return fp;
 }
 

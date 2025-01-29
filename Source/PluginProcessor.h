@@ -32,6 +32,14 @@ auto mapFracToFreq = [&](auto frac) {return mapFracToParam(frac, FREQ_RANGE.firs
 auto mapFracToQ = [&](auto frac) {return mapFracToParam(frac, Q_RANGE.first, Q_RANGE.second);};
 auto mapFracToDB = [&](auto frac) {return mapFracToParam(frac, GAIN_RANGE.first, GAIN_RANGE.second);};
 
+const juce::String CUTOFF("Cutoff");
+const juce::String BOOSTCUTDB("BoostCutDB");
+const juce::String Q("Q");
+
+extern juce::String cutoffParamFromIndex(int i);
+extern juce::String gainDBParamFromIndex(int i);
+extern juce::String qParamFromIndex(int i);
+
 enum Slope
 {
     Slope_12,

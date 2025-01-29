@@ -31,7 +31,7 @@ struct FPSteps {
 using Eigen::VectorXf;
 
 using CoefficientSolver = std::function<Coefficients(const FilterParams&, double)>;
-using Callback = std::function<void(const juce::String, const FilterParams)>;
+using Callback = std::function<void(const int, const FilterParams)>;
 
 class FilterSolverThread : public juce::Thread {
 public:
@@ -39,7 +39,7 @@ public:
         std::vector<float>&& dbsToSolve,
         CoefficientSolver&& coefficientSolver, 
         FilterParams&& startingParams,
-        const juce::String& filterName,
+        const int filterIndex,
         const double sampleRate,
         Callback cb);
     virtual ~FilterSolverThread();
@@ -61,7 +61,7 @@ private:
     Filter m_filter;
     CoefficientSolver m_coefficientSolver;
     FilterParams m_filterParams;
-    const juce::String m_filterName;
+    const int m_filterIndex;
     const double m_sampleRate;
     Callback m_cb;
     FPSteps m_fpSteps;
