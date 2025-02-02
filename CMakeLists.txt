@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.22)
 
 project(PicassoEQ)
 
-set(CMAKE_CXX_STANDARD 17)
-
 set(LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -33,6 +31,13 @@ CPMAddPackage(
     GITHUB_REPOSITORY yixuan/LBFGSpp
     VERSION 0.3.0
     SOURCE_DIR ${LIB_DIR}/lbfgspp
+)
+
+CPMAddPackage(
+    NAME ollamahpp
+    GITHUB_REPOSITORY jmont-dev/ollama-hpp
+    VERSION 0.9.4
+    SOURCE_DIR ${LIB_DIR}/ollamahpp
 )
 
 # CPMAddPackage(

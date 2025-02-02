@@ -71,7 +71,8 @@ target_sources(PicassoEQ
     PRIVATE
         PluginEditor.cpp
         PluginProcessor.cpp
-        FilterSolver.cpp)
+        FilterSolver.cpp
+        PluginAgent.cpp)
 
 # `target_compile_definitions` adds some preprocessor definitions to our target. In a Projucer
 # project, these might be passed in the 'Preprocessor Definitions' field. JUCE modules also make use
@@ -110,6 +111,7 @@ target_link_libraries(PicassoEQ
         juce::juce_graphics
         eigen
         lbfgspp
+        ollamahpp
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

@@ -7,6 +7,7 @@
 */
 
 #include "PluginEditor.h"
+#include "PluginAgent.h"
 
 #include <algorithm>
 
@@ -25,6 +26,7 @@ EQPoint findNearestAxisPointRightFromLine(const juce::Rectangle<int>& bounds, co
         axisX = int((bounds.getBottom() - b) / m);
         axisY = bounds.getBottom();
     }
+
     return { axisX, axisY };
 }
 
@@ -662,11 +664,14 @@ void EQGraphicComponent::mouseUp(const juce::MouseEvent& event)
 
 void EQGraphicComponent::mouseDoubleClick(const juce::MouseEvent& event)
 {
-    m_drawing = !m_drawing;
-    if (m_drawing) {
-        resetCurveDraw({event.x, event.y});
-    }
-    repaint();
+    pagent::PluginAgent agent(pagent::PluginType::Compressor);
+	std::string inference = agent.inferParameters(std::string("test"));
+	DBG(inference);
+    //m_drawing = !m_drawing;
+    //if (m_drawing) {
+    //    resetCurveDraw({event.x, event.y});
+    //}
+    //repaint();
 }
 
 std::vector<float> EQGraphicComponent::getXs(const std::vector<float>& freqs, float left, float width)
